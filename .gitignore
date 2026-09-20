@@ -10,6 +10,8 @@ local.properties
 .cxx
 *.apk
 .vscode/
+ignore
+ignore/*
 
 assets/audios/*/*
 !assets/audios/*/*.md

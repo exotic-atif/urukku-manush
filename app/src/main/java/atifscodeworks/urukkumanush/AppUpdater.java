@@ -3,6 +3,7 @@ package atifscodeworks.urukkumanush;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
 import android.net.Uri;
 import android.os.Build;
@@ -22,6 +23,7 @@ import java.io.InputStream;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+import okhttp3.Call;
 import okhttp3.Request;
 import okhttp3.Response;
 
@@ -32,9 +34,21 @@ public class AppUpdater {
     public static final String GITHUB_RAW_VERSION = "https://raw.githubusercontent.com/exotic-atif/urukku-manush/main/version.json";
     public static final String GITHUB_RELEASES_WEB = "https://github.com/exotic-atif/urukku-manush/releases";
 
+    private static final String PREFS_NAME = "app_updater_prefs";
+    private static final String KEY_DOWNLOADED_VERSION = "downloaded_apk_version";
+    private static final String KEY_DOWNLOADED_PATH = "downloaded_apk_path";
+    private static final String KEY_DOWNLOADED_SIZE = "downloaded_apk_size";
+
     private final Context context;
+    private final SharedPreferences prefs;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
+
+    private volatile Call activeCall = null;
+    private volatile boolean isCancelled = false;
+    private volatile boolean isPaused = false;
+    private volatile ReleaseInfo currentReleaseInfo = null;
+    private volatile DownloadProgressCallback activeCallback = null;
 
     public static class ReleaseInfo {
         public final String tagName;
@@ -75,6 +89,7 @@ public class AppUpdater {
 
     public AppUpdater(Context context) {
         this.context = context.getApplicationContext();
+        this.prefs = this.context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
         cleanOldUpdates();
     }
 
@@ -87,19 +102,63 @@ public class AppUpdater {
         }
     }
 
+    /**
+     * Checks if the complete APK for the given release is already downloaded locally.
+     * Prevents re-downloading and allows immediate installation.
+     */
+    public File getDownloadedApkFile(ReleaseInfo info) {
+        if (info == null) return null;
+        try {
+            String savedVer = prefs.getString(KEY_DOWNLOADED_VERSION, "");
+            String targetVer = info.tagName != null ? info.tagName.trim() : "";
+            if (savedVer.isEmpty() || !savedVer.equalsIgnoreCase(targetVer)) {
+                return null;
+            }
+            String path = prefs.getString(KEY_DOWNLOADED_PATH, "");
+            if (path.isEmpty()) return null;
+            File file = new File(path);
+            if (file.exists() && file.isFile() && file.length() > 5 * 1024 * 1024) {
+                // If expected size is available, check match or close tolerance
+                if (info.fileSizeBytes > 0 && Math.abs(file.length() - info.fileSizeBytes) > 1024) {
+                    return null;
+                }
+                return file;
+            }
+        } catch (Exception ignored) {
+        }
+        return null;
+    }
+
+    public boolean isApkAlreadyDownloaded(ReleaseInfo info) {
+        return getDownloadedApkFile(info) != null;
+    }
+
+    /**
+     * Deletes stale APKs if current installed version >= downloaded version,
+     * so space is freed after installation or when a new version drops.
+     */
     public void cleanOldUpdates() {
         executor.execute(() -> {
             try {
+                String curVer = getCurrentVersion().replaceAll("[^0-9.]", "");
+                String dlVer = prefs.getString(KEY_DOWNLOADED_VERSION, "").replaceAll("[^0-9.]", "");
+                boolean shouldCleanAll = dlVer.isEmpty() || !isVersionGreater(dlVer, curVer);
+
                 File dir = context.getExternalFilesDir("updates");
                 if (dir != null && dir.exists()) {
                     File[] files = dir.listFiles();
                     if (files != null) {
                         for (File f : files) {
-                            if (f.getName().endsWith(".apk")) {
-                                f.delete();
+                            if (f.getName().endsWith(".apk") || f.getName().endsWith(".part")) {
+                                if (shouldCleanAll || !f.getName().contains(dlVer)) {
+                                    f.delete();
+                                }
                             }
                         }
                     }
+                }
+                if (shouldCleanAll) {
+                    prefs.edit().remove(KEY_DOWNLOADED_VERSION).remove(KEY_DOWNLOADED_PATH).remove(KEY_DOWNLOADED_SIZE).apply();
                 }
             } catch (Exception ignored) {
             }
@@ -238,68 +297,179 @@ public class AppUpdater {
         }
     }
 
-    public void downloadUpdate(String targetUrl, DownloadProgressCallback callback) {
+    public void pauseDownload() {
+        isPaused = true;
+        if (activeCall != null) {
+            activeCall.cancel();
+        }
+    }
+
+    public void resumeDownload() {
+        if (currentReleaseInfo != null && activeCallback != null) {
+            downloadUpdate(currentReleaseInfo, activeCallback);
+        }
+    }
+
+    public void cancelDownload() {
+        isCancelled = true;
+        isPaused = false;
+        if (activeCall != null) {
+            activeCall.cancel();
+        }
         executor.execute(() -> {
             try {
-                String currentUrl = (targetUrl != null && !targetUrl.isEmpty())
-                        ? targetUrl
-                        : "https://github.com/exotic-atif/urukku-manush/releases/latest/download/urukku_manush.apk";
+                File dir = context.getExternalFilesDir("updates");
+                if (dir != null && dir.exists()) {
+                    File[] files = dir.listFiles();
+                    if (files != null) {
+                        for (File f : files) {
+                            if (f.getName().endsWith(".part") || f.getName().endsWith(".apk")) {
+                                f.delete();
+                            }
+                        }
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+        });
+    }
 
-                Request request = new Request.Builder()
-                        .url(currentUrl)
-                        .header("User-Agent", "Mozilla/5.0 (Linux; Android)")
-                        .build();
+    public boolean isPaused() {
+        return isPaused;
+    }
 
-                Response response = HttpClientProvider.get().newCall(request).execute();
-                if (!response.isSuccessful() || response.body() == null) {
-                    mainHandler.post(() -> callback.onError("Server returned HTTP " + response.code() + " (" + response.message() + ")"));
+    public void downloadUpdate(String targetUrl, DownloadProgressCallback callback) {
+        ReleaseInfo info = (currentReleaseInfo != null) ? currentReleaseInfo :
+                new ReleaseInfo("v_latest", "Urukku Manush Update", "", targetUrl, GITHUB_RELEASES_WEB, 0, true);
+        downloadUpdate(info, callback);
+    }
+
+    public void downloadUpdate(ReleaseInfo releaseInfo, DownloadProgressCallback callback) {
+        this.currentReleaseInfo = releaseInfo;
+        this.activeCallback = callback;
+        this.isCancelled = false;
+        this.isPaused = false;
+
+        executor.execute(() -> {
+            try {
+                // If the APK for this release is already fully downloaded, finish immediately
+                File alreadyDownloaded = getDownloadedApkFile(releaseInfo);
+                if (alreadyDownloaded != null) {
+                    mainHandler.post(() -> callback.onComplete(alreadyDownloaded));
                     return;
                 }
 
-                long fileLength = response.body().contentLength();
+                String currentUrl = (releaseInfo != null && releaseInfo.downloadUrl != null && !releaseInfo.downloadUrl.isEmpty())
+                        ? releaseInfo.downloadUrl
+                        : "https://github.com/exotic-atif/urukku-manush/releases/latest/download/urukku_manush.apk";
+
+                String versionTag = (releaseInfo != null && releaseInfo.tagName != null) ? releaseInfo.tagName.trim() : "v_latest";
                 File updateDir = context.getExternalFilesDir("updates");
                 if (updateDir != null && !updateDir.exists()) {
                     updateDir.mkdirs();
                 }
 
-                File destination = new File(updateDir, "urukku_manush.apk");
-                if (destination.exists()) destination.delete();
+                File destination = new File(updateDir, "urukku_manush_" + versionTag + ".apk");
+                File tempPart = new File(updateDir, "urukku_manush_" + versionTag + ".part");
+
+                long existingBytes = tempPart.exists() ? tempPart.length() : 0;
+
+                Request.Builder reqBuilder = new Request.Builder()
+                        .url(currentUrl)
+                        .header("User-Agent", "Mozilla/5.0 (Linux; Android)");
+
+                if (existingBytes > 0) {
+                    reqBuilder.header("Range", "bytes=" + existingBytes + "-");
+                }
+
+                Request request = reqBuilder.build();
+                activeCall = HttpClientProvider.get().newCall(request);
+                Response response = activeCall.execute();
+
+                if (isCancelled) {
+                    if (tempPart.exists()) tempPart.delete();
+                    return;
+                }
+
+                int code = response.code();
+                boolean isPartial = (code == 206);
+                if (!response.isSuccessful() && !isPartial) {
+                    mainHandler.post(() -> callback.onError("Server returned HTTP " + code + " (" + response.message() + ")"));
+                    return;
+                }
+
+                long contentLength = (response.body() != null) ? response.body().contentLength() : 0;
+                long totalLength = isPartial ? (existingBytes + contentLength) : contentLength;
+                if (totalLength <= 0 && releaseInfo != null) {
+                    totalLength = releaseInfo.fileSizeBytes;
+                }
+
+                // If server didn't honor Range and returned 200 OK, reset downloaded count
+                boolean append = isPartial && existingBytes > 0;
+                long downloadedSoFar = append ? existingBytes : 0;
 
                 try (InputStream input = response.body().byteStream();
-                     FileOutputStream output = new FileOutputStream(destination)) {
+                     FileOutputStream output = new FileOutputStream(tempPart, append)) {
                     byte[] data = new byte[8192];
-                    long total = 0;
                     int count;
                     long startTime = System.currentTimeMillis();
                     long lastProgressTime = startTime;
                     int lastPercent = -1;
 
                     while ((count = input.read(data)) != -1) {
-                        total += count;
+                        if (isCancelled) {
+                            if (tempPart.exists()) tempPart.delete();
+                            return;
+                        }
+                        if (isPaused) {
+                            output.flush();
+                            return;
+                        }
+
                         output.write(data, 0, count);
+                        downloadedSoFar += count;
 
                         long now = System.currentTimeMillis();
-                        if (now - lastProgressTime >= 100 || total == fileLength) {
+                        if (now - lastProgressTime >= 100 || downloadedSoFar == totalLength) {
                             lastProgressTime = now;
                             long elapsed = Math.max(1, now - startTime);
-                            float speedMBs = (total / 1024f / 1024f) / (elapsed / 1000f);
+                            float speedMBs = ((downloadedSoFar - (append ? existingBytes : 0)) / 1024f / 1024f) / (elapsed / 1000f);
 
-                            int percent = (fileLength > 0) ? (int) (total * 100 / fileLength) : 0;
-                            if (percent != lastPercent || total == fileLength) {
+                            int percent = (totalLength > 0) ? (int) (downloadedSoFar * 100 / totalLength) : 0;
+                            if (percent != lastPercent || downloadedSoFar == totalLength) {
                                 lastPercent = percent;
-                                final long finalTotal = total;
-                                final long finalLength = fileLength;
-                                final float finalSpeed = speedMBs;
                                 final int finalPercent = percent;
-                                mainHandler.post(() -> callback.onProgress(finalPercent, finalTotal, finalLength, finalSpeed));
+                                final long finalDownloaded = downloadedSoFar;
+                                final long finalTotal = totalLength;
+                                final float finalSpeed = speedMBs;
+                                mainHandler.post(() -> callback.onProgress(finalPercent, finalDownloaded, finalTotal, finalSpeed));
                             }
                         }
                     }
                     output.flush();
                 }
 
+                if (isPaused) return;
+                if (isCancelled) {
+                    if (tempPart.exists()) tempPart.delete();
+                    return;
+                }
+
+                if (destination.exists()) destination.delete();
+                tempPart.renameTo(destination);
+
+                // Save downloaded version info in preferences
+                prefs.edit()
+                        .putString(KEY_DOWNLOADED_VERSION, versionTag)
+                        .putString(KEY_DOWNLOADED_PATH, destination.getAbsolutePath())
+                        .putLong(KEY_DOWNLOADED_SIZE, destination.length())
+                        .apply();
+
                 mainHandler.post(() -> callback.onComplete(destination));
             } catch (Exception e) {
+                if (isPaused || isCancelled) {
+                    return;
+                }
                 Log.e(TAG, "Error downloading update APK", e);
                 mainHandler.post(() -> callback.onError(e.getClass().getSimpleName() + ": " + (e.getMessage() != null ? e.getMessage() : "Unknown error")));
             }

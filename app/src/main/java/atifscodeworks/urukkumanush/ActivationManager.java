@@ -81,6 +81,8 @@ public class ActivationManager {
         addFallback("9256f3db4e37f29c3e0ab6903b2fcc58c85c2a6e34654d73000927d3fa38064f", 2);
         addFallback("2941ab5bd328ed9d52c03bdcaede67feb1864316dcead6c49eb1838488dacdef", 3);
         addFallback("9fcb2ea43cafc7762016761b378e1bc2918ef8a65f77911315011323c259bb54", 4);
+        addFallback("f4cdaaa043a69dfa07a7c20fa1c5b15d3b5f8e6ef89a7fd98f12b9055a2857d2", 5);
+        addFallback("d07d632ac8c3f13b7aecbb0fa582eee0b301802db98689f0c0f64c3753aee336", 6);
     }
 
     private void addFallback(String hex, int headIdx) {
@@ -131,7 +133,7 @@ public class ActivationManager {
     public void applyPendingLauncherIconUpdate() {
         try {
             int pending = prefs.getInt(KEY_PENDING_ICON_HEAD, -1);
-            if (pending >= 1 && pending <= 4) {
+            if (pending >= 1 && pending <= 6) {
                 prefs.edit().remove(KEY_PENDING_ICON_HEAD).putInt(KEY_APPLIED_ICON_HEAD, pending).apply();
                 updateLauncherIcon(pending);
                 return;
@@ -160,7 +162,9 @@ public class ActivationManager {
                     pkg + ".MainActivityHead1",
                     pkg + ".MainActivityHead2",
                     pkg + ".MainActivityHead3",
-                    pkg + ".MainActivityHead4"
+                    pkg + ".MainActivityHead4",
+                    pkg + ".MainActivityHead5",
+                    pkg + ".MainActivityHead6"
             };
 
             for (int i = 0; i < aliases.length; i++) {
@@ -178,7 +182,7 @@ public class ActivationManager {
             }
 
             // Disable default activity icon so launcher shows the active alias
-            int defaultState = (headIndex >= 1 && headIndex <= 4)
+            int defaultState = (headIndex >= 1 && headIndex <= 6)
                     ? PackageManager.COMPONENT_ENABLED_STATE_DISABLED
                     : PackageManager.COMPONENT_ENABLED_STATE_ENABLED;
             ComponentName defComp = new ComponentName(pkg, defaultActivity);
@@ -207,6 +211,8 @@ public class ActivationManager {
         if (head.contains("2")) return 2;
         if (head.contains("3")) return 3;
         if (head.contains("4")) return 4;
+        if (head.contains("5")) return 5;
+        if (head.contains("6")) return 6;
         return 1;
     }
 

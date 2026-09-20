@@ -12,8 +12,8 @@ android {
         applicationId = "atifscodeworks.urukkumanush"
         minSdk = 28
         targetSdk = 37
-        versionCode = 2
-        versionName = "2.0.0"
+        versionCode = 3
+        versionName = "2.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -33,6 +33,7 @@ android {
 
     sourceSets {
         getByName("main") {
+            java.directories.add("src/main/java")
             assets.directories.add("../assets")
         }
     }

@@ -42,11 +42,19 @@ public class LeaderboardManager {
         public final String name;
         public final int score;
         public final String characterUsed;
+        public final String code;
+        public final int headIndex;
 
         public Entry(String name, int score, String characterUsed) {
+            this(name, score, characterUsed, "", -1);
+        }
+
+        public Entry(String name, int score, String characterUsed, String code, int headIndex) {
             this.name = name;
             this.score = score;
             this.characterUsed = characterUsed;
+            this.code = code;
+            this.headIndex = headIndex;
         }
     }
 
@@ -77,14 +85,19 @@ public class LeaderboardManager {
     public String getPlayerName(int headIndex) {
         String saved = prefs.getString(KEY_PLAYER_NAME, "");
         if (!saved.isEmpty()) return saved;
-        switch (headIndex) {
-            case 1: return "Anurag";
-            case 2: return "Vikram";
-            case 3: return "Adi";
-            case 4: return "Taniya";
-            default:
-                return "Urukku Manush";
+
+        // Lookup dynamically from cached Supabase leaderboard table
+        List<Entry> cached = getCachedEntries();
+        for (Entry e : cached) {
+            if ((e.characterUsed != null && e.characterUsed.equals("head_" + headIndex + ".png"))
+                    || e.headIndex == headIndex) {
+                if (e.name != null && !e.name.isEmpty()) {
+                    prefs.edit().putString(KEY_PLAYER_NAME, e.name).apply();
+                    return e.name;
+                }
+            }
         }
+        return "Player " + headIndex;
     }
 
     public void setPlayerName(String name) {
@@ -267,7 +280,9 @@ public class LeaderboardManager {
                 String name = obj.optString("name", obj.optString("player_name", "Player"));
                 int score = obj.optInt("score", 0);
                 String charUsed = obj.optString("character_used", "head_1.png");
-                list.add(new Entry(name, score, charUsed));
+                String code = obj.optString("code", obj.optString("activation_hash", ""));
+                int headIndex = obj.optInt("head_index", -1);
+                list.add(new Entry(name, score, charUsed, code, headIndex));
             }
         } catch (Exception ignored) {
         }

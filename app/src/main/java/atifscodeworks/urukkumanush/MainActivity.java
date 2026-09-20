@@ -17,7 +17,9 @@ import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
+import android.content.res.ColorStateList;
 import android.util.Log;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.ScrollView;
@@ -29,6 +31,8 @@ import androidx.core.content.ContextCompat;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
+
+import com.google.android.material.button.MaterialButton;
 
 import java.io.File;
 import java.util.List;
@@ -82,6 +86,30 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
     public void onNewHighScore(int score) {
         ActivationManager actMgr = new ActivationManager(this);
         leaderboardManager.autoSyncHighScore(score, actMgr.getActiveHash(), actMgr.getActiveHeadIndex(), actMgr.getActiveHead());
+    }
+
+    private MaterialButton createMaterialIconButton(int resId, String label, int bgColor, int textColor, Typeface font) {
+        MaterialButton btn = new MaterialButton(this);
+        btn.setText(label);
+        btn.setTextColor(textColor);
+        btn.setTypeface(font);
+        btn.setTextSize(13);
+        btn.setLetterSpacing(0f);
+        btn.setBackgroundTintList(ColorStateList.valueOf(bgColor));
+        btn.setCornerRadius((int) (14 * getResources().getDisplayMetrics().density));
+        btn.setInsetTop(0);
+        btn.setInsetBottom(0);
+
+        if (resId != 0) {
+            btn.setIconResource(resId);
+            btn.setIconTint(ColorStateList.valueOf(textColor));
+            btn.setIconGravity(MaterialButton.ICON_GRAVITY_TEXT_START);
+            int iconSize = (int) (18 * getResources().getDisplayMetrics().density);
+            btn.setIconSize(iconSize);
+            btn.setIconPadding((int) (8 * getResources().getDisplayMetrics().density));
+        }
+
+        return btn;
     }
 
     private void setButtonVectorIcon(Button btn, int resId, int color) {
@@ -359,106 +387,176 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
     public void onShowOptionsDialog() {
         runOnUiThread(() -> {
             AudioManager audioMgr = gameView.getAudioManager();
+            ActivationManager actMgr = gameView.getActivationManager();
             Typeface font = getGameFont();
+            float density = getResources().getDisplayMetrics().density;
 
             AlertDialog.Builder builder = new AlertDialog.Builder(this);
             ScrollView scrollView = new ScrollView(this);
             LinearLayout layout = new LinearLayout(this);
             layout.setOrientation(LinearLayout.VERTICAL);
-            layout.setPadding(60, 40, 60, 40);
+            layout.setPadding((int) (24 * density), (int) (20 * density), (int) (24 * density), (int) (20 * density));
 
             GradientDrawable bg = new GradientDrawable();
-            bg.setColor(Color.rgb(24, 28, 42));
-            bg.setCornerRadius(24f);
-            bg.setStroke(3, Color.rgb(52, 152, 219));
+            bg.setColor(Color.rgb(21, 26, 40));
+            bg.setCornerRadius(20 * density);
+            bg.setStroke((int) (2 * density), Color.rgb(39, 217, 242));
             layout.setBackground(bg);
 
+            // Title "GAME SETTINGS"
             TextView title = new TextView(this);
-            title.setText("Game Settings");
-            title.setTextSize(22);
+            title.setText("GAME SETTINGS");
+            title.setTextSize(20);
             title.setTypeface(font);
-            title.setTextColor(Color.rgb(0, 229, 255));
+            title.setTextColor(Color.rgb(255, 213, 42));
             title.setGravity(Gravity.CENTER);
-            title.setPadding(0, 0, 0, 20);
+            title.setPadding(0, 0, 0, (int) (6 * density));
             layout.addView(title);
 
             // Version label
             TextView verLabel = new TextView(this);
             verLabel.setText("Urukku Manush v" + appUpdater.getCurrentVersion());
-            verLabel.setTextSize(13);
+            verLabel.setTextSize(12);
             verLabel.setTypeface(font);
-            verLabel.setTextColor(Color.rgb(180, 195, 220));
+            verLabel.setTextColor(Color.rgb(174, 183, 204));
             verLabel.setGravity(Gravity.CENTER);
-            verLabel.setPadding(0, 0, 0, 16);
+            verLabel.setPadding(0, 0, 0, (int) (14 * density));
             layout.addView(verLabel);
 
-            // Mute SFX checkbox
-            CheckBox cbMuteSfx = new CheckBox(this);
-            cbMuteSfx.setText(" Mute SFX (Sound Effects)");
-            cbMuteSfx.setTextColor(Color.WHITE);
-            cbMuteSfx.setTypeface(font);
-            cbMuteSfx.setTextSize(15);
-            cbMuteSfx.setChecked(!audioMgr.isSfxEnabled());
-            cbMuteSfx.setOnCheckedChangeListener((b, isMuted) -> {
-                audioMgr.playClickSound();
-                audioMgr.setSfxEnabled(!isMuted);
-            });
-            layout.addView(cbMuteSfx);
+            // SECTION 1: AUDIO
+            layout.addView(createSectionHeader("AUDIO", font, density));
 
-            // Mute BGM checkbox
-            CheckBox cbMuteBgm = new CheckBox(this);
-            cbMuteBgm.setText(" Mute BGM (Background Music)");
-            cbMuteBgm.setTextColor(Color.WHITE);
-            cbMuteBgm.setTypeface(font);
-            cbMuteBgm.setTextSize(15);
-            cbMuteBgm.setChecked(!audioMgr.isBgmEnabled());
-            cbMuteBgm.setOnCheckedChangeListener((b, isMuted) -> {
-                audioMgr.playClickSound();
-                audioMgr.setBgmEnabled(!isMuted);
-            });
-            layout.addView(cbMuteBgm);
+            // SFX Toggle Row
+            LinearLayout sfxRow = new LinearLayout(this);
+            sfxRow.setOrientation(LinearLayout.HORIZONTAL);
+            sfxRow.setGravity(Gravity.CENTER_VERTICAL);
+            sfxRow.setPadding((int) (8 * density), (int) (6 * density), (int) (8 * density), (int) (6 * density));
 
-            // Leaderboard button with real SVG trophy icon
-            Button leaderboardBtn = new Button(this);
-            leaderboardBtn.setText("LEADERBOARD");
-            leaderboardBtn.setTextColor(Color.WHITE);
-            leaderboardBtn.setTypeface(font);
-            setButtonVectorIcon(leaderboardBtn, R.drawable.ic_trophy, Color.WHITE);
-            GradientDrawable btnLeadBg = new GradientDrawable();
-            btnLeadBg.setColor(Color.rgb(243, 156, 18));
-            btnLeadBg.setCornerRadius(12f);
-            leaderboardBtn.setBackground(btnLeadBg);
+            TextView sfxLabel = new TextView(this);
+            sfxLabel.setText("SFX");
+            sfxLabel.setTextSize(14);
+            sfxLabel.setTypeface(font);
+            sfxLabel.setTextColor(Color.rgb(243, 245, 250));
+            LinearLayout.LayoutParams lpSfx = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+            sfxLabel.setLayoutParams(lpSfx);
+            sfxRow.addView(sfxLabel);
+
+            MaterialButton btnSfx = new MaterialButton(this);
+            btnSfx.setText(audioMgr.isSfxEnabled() ? "[ ON ]" : "[ OFF ]");
+            btnSfx.setTextColor(Color.WHITE);
+            btnSfx.setTypeface(font);
+            btnSfx.setTextSize(12);
+            btnSfx.setLetterSpacing(0f);
+            btnSfx.setCornerRadius((int) (8 * density));
+            btnSfx.setInsetTop(0);
+            btnSfx.setInsetBottom(0);
+            btnSfx.setBackgroundTintList(ColorStateList.valueOf(audioMgr.isSfxEnabled() ? Color.rgb(40, 209, 124) : Color.rgb(239, 83, 80)));
+            LinearLayout.LayoutParams lpBtnSfx = new LinearLayout.LayoutParams((int) (90 * density), (int) (38 * density));
+            btnSfx.setLayoutParams(lpBtnSfx);
+            btnSfx.setOnClickListener(v -> {
+                boolean nowEnabled = !audioMgr.isSfxEnabled();
+                audioMgr.setSfxEnabled(nowEnabled);
+                if (nowEnabled) audioMgr.playClickSound();
+                btnSfx.setText(nowEnabled ? "[ ON ]" : "[ OFF ]");
+                btnSfx.setBackgroundTintList(ColorStateList.valueOf(nowEnabled ? Color.rgb(40, 209, 124) : Color.rgb(239, 83, 80)));
+            });
+            sfxRow.addView(btnSfx);
+            layout.addView(sfxRow);
+
+            // Music Toggle Row
+            LinearLayout musicRow = new LinearLayout(this);
+            musicRow.setOrientation(LinearLayout.HORIZONTAL);
+            musicRow.setGravity(Gravity.CENTER_VERTICAL);
+            musicRow.setPadding((int) (8 * density), (int) (6 * density), (int) (8 * density), (int) (6 * density));
+
+            TextView musicLabel = new TextView(this);
+            musicLabel.setText("MUSIC");
+            musicLabel.setTextSize(14);
+            musicLabel.setTypeface(font);
+            musicLabel.setTextColor(Color.rgb(243, 245, 250));
+            LinearLayout.LayoutParams lpMusic = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+            musicLabel.setLayoutParams(lpMusic);
+            musicRow.addView(musicLabel);
+
+            MaterialButton btnMusic = new MaterialButton(this);
+            btnMusic.setText(audioMgr.isBgmEnabled() ? "[ ON ]" : "[ OFF ]");
+            btnMusic.setTextColor(Color.WHITE);
+            btnMusic.setTypeface(font);
+            btnMusic.setTextSize(12);
+            btnMusic.setLetterSpacing(0f);
+            btnMusic.setCornerRadius((int) (8 * density));
+            btnMusic.setInsetTop(0);
+            btnMusic.setInsetBottom(0);
+            btnMusic.setBackgroundTintList(ColorStateList.valueOf(audioMgr.isBgmEnabled() ? Color.rgb(40, 209, 124) : Color.rgb(239, 83, 80)));
+            LinearLayout.LayoutParams lpBtnMusic = new LinearLayout.LayoutParams((int) (90 * density), (int) (38 * density));
+            btnMusic.setLayoutParams(lpBtnMusic);
+            btnMusic.setOnClickListener(v -> {
+                boolean nowEnabled = !audioMgr.isBgmEnabled();
+                audioMgr.setBgmEnabled(nowEnabled);
+                audioMgr.playClickSound();
+                btnMusic.setText(nowEnabled ? "[ ON ]" : "[ OFF ]");
+                btnMusic.setBackgroundTintList(ColorStateList.valueOf(nowEnabled ? Color.rgb(40, 209, 124) : Color.rgb(239, 83, 80)));
+            });
+            musicRow.addView(btnMusic);
+            layout.addView(musicRow);
+
+            // SECTION 2: ONLINE
+            layout.addView(createSectionHeader("ONLINE", font, density));
+
+            MaterialButton leaderboardBtn = createMaterialIconButton(
+                    R.drawable.ic_trophy,
+                    "LEADERBOARD",
+                    Color.rgb(243, 156, 18),
+                    Color.WHITE,
+                    font
+            );
             LinearLayout.LayoutParams lpLead = new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-            lpLead.setMargins(0, 20, 0, 10);
+                    LinearLayout.LayoutParams.MATCH_PARENT, (int) (48 * density));
+            lpLead.setMargins(0, (int) (6 * density), 0, (int) (6 * density));
             leaderboardBtn.setLayoutParams(lpLead);
             layout.addView(leaderboardBtn);
 
-            // In-App Check Updates button with real SVG refresh icon
-            Button updateBtn = new Button(this);
-            updateBtn.setText("CHECK FOR UPDATES");
-            updateBtn.setTextColor(Color.WHITE);
-            updateBtn.setTypeface(font);
-            setButtonVectorIcon(updateBtn, R.drawable.ic_refresh, Color.WHITE);
-            GradientDrawable btnUpBg = new GradientDrawable();
-            btnUpBg.setColor(Color.rgb(46, 204, 113));
-            btnUpBg.setCornerRadius(12f);
-            updateBtn.setBackground(btnUpBg);
+            // SECTION 3: SYSTEM
+            layout.addView(createSectionHeader("SYSTEM", font, density));
+
+            MaterialButton updateBtn = createMaterialIconButton(
+                    R.drawable.ic_refresh,
+                    "CHECK FOR UPDATES",
+                    Color.rgb(40, 209, 124),
+                    Color.WHITE,
+                    font
+            );
             LinearLayout.LayoutParams lpUp = new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-            lpUp.setMargins(0, 0, 0, 14);
+                    LinearLayout.LayoutParams.MATCH_PARENT, (int) (48 * density));
+            lpUp.setMargins(0, (int) (6 * density), 0, (int) (6 * density));
             updateBtn.setLayoutParams(lpUp);
             layout.addView(updateBtn);
 
+            // Unlock / switch head button
+            MaterialButton actvBtn = createMaterialIconButton(
+                    R.drawable.ic_gear,
+                    actMgr.isActivated() ? "ENTER ACTIVATION CODE" : "ACTIVATE GAME",
+                    Color.rgb(59, 167, 232),
+                    Color.WHITE,
+                    font
+            );
+            LinearLayout.LayoutParams lpActv = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, (int) (48 * density));
+            lpActv.setMargins(0, (int) (4 * density), 0, (int) (14 * density));
+            actvBtn.setLayoutParams(lpActv);
+            layout.addView(actvBtn);
+
             // Close button
-            Button closeBtn = new Button(this);
-            closeBtn.setText("CLOSE");
-            closeBtn.setTextColor(Color.WHITE);
-            closeBtn.setTypeface(font);
-            GradientDrawable btnCloseBg = new GradientDrawable();
-            btnCloseBg.setColor(Color.rgb(60, 70, 90));
-            btnCloseBg.setCornerRadius(12f);
-            closeBtn.setBackground(btnCloseBg);
+            MaterialButton closeBtn = createMaterialIconButton(
+                    0,
+                    "CLOSE",
+                    Color.rgb(48, 56, 78),
+                    Color.WHITE,
+                    font
+            );
+            LinearLayout.LayoutParams lpClose = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, (int) (44 * density));
+            closeBtn.setLayoutParams(lpClose);
             layout.addView(closeBtn);
 
             scrollView.addView(layout);
@@ -482,11 +580,41 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
                 startUpdateCheck();
             });
 
+            actvBtn.setOnClickListener(v -> {
+                audioMgr.playClickSound();
+                dialog.dismiss();
+                onShowActivationDialog(null);
+            });
+
             closeBtn.setOnClickListener(v -> {
                 audioMgr.playClickSound();
                 dialog.dismiss();
             });
         });
+    }
+
+    private View createSectionHeader(String title, Typeface font, float density) {
+        LinearLayout container = new LinearLayout(this);
+        container.setOrientation(LinearLayout.VERTICAL);
+        container.setPadding(0, (int) (14 * density), 0, (int) (6 * density));
+
+        TextView tv = new TextView(this);
+        tv.setText(title);
+        tv.setTextSize(12);
+        tv.setTypeface(font);
+        tv.setTextColor(Color.rgb(39, 217, 242));
+        tv.setLetterSpacing(0.05f);
+        container.addView(tv);
+
+        View divider = new View(this);
+        divider.setBackgroundColor(Color.rgb(48, 56, 78));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, (int) (1 * density));
+        lp.setMargins(0, (int) (4 * density), 0, 0);
+        divider.setLayoutParams(lp);
+        container.addView(divider);
+
+        return container;
     }
 
     private void startUpdateCheck() {
@@ -608,10 +736,12 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
         layout.setOrientation(LinearLayout.VERTICAL);
         layout.setPadding(40, 30, 40, 30);
 
+        boolean isDownloaded = appUpdater.isApkAlreadyDownloaded(info);
+
         GradientDrawable bg = new GradientDrawable();
         bg.setColor(Color.rgb(18, 22, 34));
         bg.setCornerRadius(24f);
-        bg.setStroke(3, info.isUpdateAvailable ? Color.rgb(46, 204, 113) : Color.rgb(0, 229, 255));
+        bg.setStroke(3, (isDownloaded || info.isUpdateAvailable) ? Color.rgb(46, 204, 113) : Color.rgb(0, 229, 255));
         layout.setBackground(bg);
 
         // Header Title
@@ -625,10 +755,18 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
 
         // Status Badge
         TextView badge = new TextView(this);
-        badge.setText(info.isUpdateAvailable ? "⚡ NEW VERSION READY TO INSTALL" : "✅ YOU ARE UP TO DATE");
+        if (isDownloaded) {
+            badge.setText("UPDATE PACKAGE READY TO INSTALL");
+            badge.setTextColor(Color.rgb(46, 204, 113));
+        } else if (info.isUpdateAvailable) {
+            badge.setText("NEW VERSION AVAILABLE: " + info.tagName);
+            badge.setTextColor(Color.rgb(46, 204, 113));
+        } else {
+            badge.setText("YOU ARE ON THE LATEST VERSION");
+            badge.setTextColor(Color.rgb(0, 229, 255));
+        }
         badge.setTextSize(13);
         badge.setTypeface(font);
-        badge.setTextColor(info.isUpdateAvailable ? Color.rgb(46, 204, 113) : Color.rgb(0, 229, 255));
         badge.setGravity(Gravity.CENTER);
         badge.setPadding(0, 8, 0, 14);
         layout.addView(badge);
@@ -654,7 +792,7 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
         infoCard.addView(relName);
 
         TextView verCompare = new TextView(this);
-        verCompare.setText("Installed: v" + appUpdater.getCurrentVersion() + "   ➔   Available: " + info.tagName);
+        verCompare.setText("Installed: v" + appUpdater.getCurrentVersion() + "   ->   Available: " + info.tagName);
         verCompare.setTextSize(13);
         verCompare.setTypeface(font);
         verCompare.setTextColor(Color.rgb(0, 229, 255));
@@ -672,7 +810,7 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
 
         // Changelog Section Header
         TextView notesHeader = new TextView(this);
-        notesHeader.setText("📋 PATCH NOTES & DETAILS");
+        notesHeader.setText("PATCH NOTES & DETAILS");
         notesHeader.setTextSize(14);
         notesHeader.setTypeface(font);
         notesHeader.setTextColor(Color.rgb(255, 215, 0));
@@ -697,7 +835,7 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
         notesScroll.addView(notesText);
         layout.addView(notesScroll);
 
-        // Live Progress Container (hidden initially)
+        // Live Progress Container
         LinearLayout progressContainer = new LinearLayout(this);
         progressContainer.setOrientation(LinearLayout.VERTICAL);
         progressContainer.setPadding(0, 16, 0, 0);
@@ -726,17 +864,34 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
         progressStats.setTextColor(Color.rgb(180, 195, 220));
         progressContainer.addView(progressStats);
 
+        // Controls Row (Pause/Resume & Cancel)
+        LinearLayout controlsRow = new LinearLayout(this);
+        controlsRow.setOrientation(LinearLayout.HORIZONTAL);
+        controlsRow.setPadding(0, 8, 0, 0);
+
+        MaterialButton pauseBtn = createMaterialIconButton(0, "PAUSE", Color.rgb(243, 156, 18), Color.WHITE, font);
+        LinearLayout.LayoutParams lpPause = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+        lpPause.setMargins(0, 0, 6, 0);
+        pauseBtn.setLayoutParams(lpPause);
+        controlsRow.addView(pauseBtn);
+
+        MaterialButton cancelBtn = createMaterialIconButton(0, "CANCEL", Color.rgb(231, 76, 60), Color.WHITE, font);
+        LinearLayout.LayoutParams lpCancel = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+        lpCancel.setMargins(6, 0, 0, 0);
+        cancelBtn.setLayoutParams(lpCancel);
+        controlsRow.addView(cancelBtn);
+
+        progressContainer.addView(controlsRow);
         layout.addView(progressContainer);
 
-        // Action Buttons Row
-        Button actionBtn = new Button(this);
-        actionBtn.setText(info.isUpdateAvailable ? "DOWNLOAD & INSTALL" : "RE-INSTALL LATEST (v" + info.tagName + ")");
-        actionBtn.setTextColor(Color.WHITE);
-        actionBtn.setTypeface(font);
-        GradientDrawable actBg = new GradientDrawable();
-        actBg.setColor(Color.rgb(46, 204, 113));
-        actBg.setCornerRadius(12f);
-        actionBtn.setBackground(actBg);
+        // Action Button
+        MaterialButton actionBtn = createMaterialIconButton(
+                0,
+                isDownloaded ? "INSTALL NOW (v" + info.tagName + ")" : (info.isUpdateAvailable ? "DOWNLOAD & INSTALL" : "RE-INSTALL (v" + info.tagName + ")"),
+                Color.rgb(46, 204, 113),
+                Color.WHITE,
+                font
+        );
         LinearLayout.LayoutParams lpAct = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
         lpAct.setMargins(0, 20, 0, 8);
@@ -746,27 +901,13 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
         LinearLayout rowButtons = new LinearLayout(this);
         rowButtons.setOrientation(LinearLayout.HORIZONTAL);
 
-        Button webBtn = new Button(this);
-        webBtn.setText("🌐 VIEW ON GITHUB");
-        webBtn.setTextColor(Color.WHITE);
-        webBtn.setTypeface(font);
-        GradientDrawable webBg = new GradientDrawable();
-        webBg.setColor(Color.rgb(36, 41, 46));
-        webBg.setCornerRadius(12f);
-        webBtn.setBackground(webBg);
+        MaterialButton webBtn = createMaterialIconButton(R.drawable.ic_github, "VIEW ON GITHUB", Color.rgb(36, 41, 46), Color.WHITE, font);
         LinearLayout.LayoutParams lpWeb = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
         lpWeb.setMargins(0, 0, 6, 0);
         webBtn.setLayoutParams(lpWeb);
         rowButtons.addView(webBtn);
 
-        Button closeBtn = new Button(this);
-        closeBtn.setText("CLOSE");
-        closeBtn.setTextColor(Color.WHITE);
-        closeBtn.setTypeface(font);
-        GradientDrawable clsBg = new GradientDrawable();
-        clsBg.setColor(Color.rgb(60, 70, 90));
-        clsBg.setCornerRadius(12f);
-        closeBtn.setBackground(clsBg);
+        MaterialButton closeBtn = createMaterialIconButton(0, "CLOSE", Color.rgb(60, 70, 90), Color.WHITE, font);
         LinearLayout.LayoutParams lpCls = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
         lpCls.setMargins(6, 0, 0, 0);
         closeBtn.setLayoutParams(lpCls);
@@ -784,6 +925,31 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
         updateDialog.show();
 
         final File[] downloadedApk = new File[1];
+        if (isDownloaded) {
+            downloadedApk[0] = appUpdater.getDownloadedApkFile(info);
+        }
+
+        pauseBtn.setOnClickListener(pv -> {
+            if (appUpdater.isPaused()) {
+                appUpdater.resumeDownload();
+                pauseBtn.setText("PAUSE");
+                progressLabel.setText("Downloading update package...");
+                progressLabel.setTextColor(Color.rgb(0, 229, 255));
+            } else {
+                appUpdater.pauseDownload();
+                pauseBtn.setText("RESUME");
+                progressLabel.setText("Download paused.");
+                progressLabel.setTextColor(Color.rgb(255, 215, 0));
+            }
+        });
+
+        cancelBtn.setOnClickListener(cv -> {
+            appUpdater.cancelDownload();
+            progressContainer.setVisibility(View.GONE);
+            actionBtn.setVisibility(View.VISIBLE);
+            actionBtn.setEnabled(true);
+            actionBtn.setText(info.isUpdateAvailable ? "DOWNLOAD & INSTALL" : "RE-INSTALL (v" + info.tagName + ")");
+        });
 
         actionBtn.setOnClickListener(v -> {
             if (downloadedApk[0] != null && downloadedApk[0].exists()) {
@@ -791,11 +957,13 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
                 return;
             }
 
-            actionBtn.setEnabled(false);
-            actionBtn.setText("DOWNLOADING...");
+            actionBtn.setVisibility(View.GONE);
             progressContainer.setVisibility(View.VISIBLE);
+            pauseBtn.setText("PAUSE");
+            pauseBtn.setVisibility(View.VISIBLE);
+            cancelBtn.setVisibility(View.VISIBLE);
 
-            appUpdater.downloadUpdate(info.downloadUrl, new AppUpdater.DownloadProgressCallback() {
+            appUpdater.downloadUpdate(info, new AppUpdater.DownloadProgressCallback() {
                 @Override
                 public void onProgress(int progressPercent, long downloadedBytes, long totalBytes, float speedMBs) {
                     progressBar.setProgress(progressPercent);
@@ -810,14 +978,14 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
                 @Override
                 public void onComplete(File apkFile) {
                     downloadedApk[0] = apkFile;
+                    pauseBtn.setVisibility(View.GONE);
+                    cancelBtn.setVisibility(View.GONE);
+                    actionBtn.setVisibility(View.VISIBLE);
                     actionBtn.setEnabled(true);
                     actionBtn.setText("PACKAGE READY - INSTALL NOW");
-                    GradientDrawable instBg = new GradientDrawable();
-                    instBg.setColor(Color.rgb(46, 204, 113));
-                    instBg.setCornerRadius(12f);
-                    actionBtn.setBackground(instBg);
+                    actionBtn.setBackgroundTintList(ColorStateList.valueOf(Color.rgb(46, 204, 113)));
 
-                    progressLabel.setText("✅ Download verified and complete!");
+                    progressLabel.setText("Download verified and complete!");
                     progressLabel.setTextColor(Color.rgb(46, 204, 113));
                     progressBar.setProgress(100);
 
@@ -827,19 +995,19 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
 
                 @Override
                 public void onError(String error) {
+                    pauseBtn.setVisibility(View.GONE);
+                    cancelBtn.setVisibility(View.GONE);
+                    actionBtn.setVisibility(View.VISIBLE);
                     actionBtn.setEnabled(true);
                     actionBtn.setText("RETRY DOWNLOAD");
-                    progressLabel.setText("❌ " + error);
+                    progressLabel.setText("Notice: " + error);
                     progressLabel.setTextColor(Color.rgb(255, 80, 80));
                     Toast.makeText(MainActivity.this, "Download error: " + error, Toast.LENGTH_LONG).show();
                 }
             });
         });
 
-        webBtn.setOnClickListener(v -> {
-            openUrlSafely(info.htmlUrl);
-        });
-
+        webBtn.setOnClickListener(v -> openUrlSafely(info.htmlUrl));
         closeBtn.setOnClickListener(v -> updateDialog.dismiss());
     }
 
@@ -947,28 +1115,13 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
             btnRow.setOrientation(LinearLayout.HORIZONTAL);
             btnRow.setGravity(Gravity.CENTER);
 
-            Button refreshBtn = new Button(this);
-            refreshBtn.setText("REFRESH");
-            refreshBtn.setTextColor(Color.WHITE);
-            refreshBtn.setTypeface(font);
-            setButtonVectorIcon(refreshBtn, R.drawable.ic_refresh, Color.WHITE);
-            GradientDrawable btnRefBg = new GradientDrawable();
-            btnRefBg.setColor(Color.rgb(52, 152, 219));
-            btnRefBg.setCornerRadius(12f);
-            refreshBtn.setBackground(btnRefBg);
+            MaterialButton refreshBtn = createMaterialIconButton(R.drawable.ic_refresh, "REFRESH", Color.rgb(52, 152, 219), Color.WHITE, font);
             LinearLayout.LayoutParams lpRef = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
             lpRef.setMargins(0, 14, 8, 0);
             refreshBtn.setLayoutParams(lpRef);
             btnRow.addView(refreshBtn);
 
-            Button closeBtn = new Button(this);
-            closeBtn.setText("CLOSE");
-            closeBtn.setTextColor(Color.WHITE);
-            closeBtn.setTypeface(font);
-            GradientDrawable btnClsBg = new GradientDrawable();
-            btnClsBg.setColor(Color.rgb(60, 70, 90));
-            btnClsBg.setCornerRadius(12f);
-            closeBtn.setBackground(btnClsBg);
+            MaterialButton closeBtn = createMaterialIconButton(0, "CLOSE", Color.rgb(60, 70, 90), Color.WHITE, font);
             LinearLayout.LayoutParams lpCls = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
             lpCls.setMargins(8, 14, 0, 0);
             closeBtn.setLayoutParams(lpCls);
@@ -1011,16 +1164,83 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
 
                         for (int i = 0; i < entries.size(); i++) {
                             LeaderboardManager.Entry e = entries.get(i);
+                            boolean isMe = (actMgr.getActiveHash() != null && actMgr.getActiveHash().equalsIgnoreCase(e.code))
+                                    || (e.headIndex == actMgr.getActiveHeadIndex());
+
                             LinearLayout row = new LinearLayout(MainActivity.this);
                             row.setOrientation(LinearLayout.HORIZONTAL);
-                            row.setPadding(12, 8, 12, 8);
+                            row.setGravity(Gravity.CENTER_VERTICAL);
+                            row.setPadding(16, 12, 16, 12);
 
-                            String rankLabel = (i == 0) ? "#1 [GOLD] " : (i == 1) ? "#2 [SILVER] " : (i == 2) ? "#3 [BRONZE] " : ("#" + (i + 1) + " ");
+                            GradientDrawable rowBg = new GradientDrawable();
+                            if (isMe) {
+                                rowBg.setColor(Color.rgb(24, 38, 56));
+                                rowBg.setStroke(2, Color.rgb(0, 229, 255));
+                            } else {
+                                rowBg.setColor((i % 2 == 0) ? Color.rgb(24, 28, 42) : Color.rgb(20, 24, 36));
+                            }
+                            rowBg.setCornerRadius(10f);
+                            row.setBackground(rowBg);
+
+                            LinearLayout.LayoutParams lpRow = new LinearLayout.LayoutParams(
+                                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+                            lpRow.setMargins(0, 4, 0, 4);
+                            row.setLayoutParams(lpRow);
+
+                            int iconDim = (int) (22 * getResources().getDisplayMetrics().density);
+
+                            if (i == 0) {
+                                ImageView iv = new ImageView(MainActivity.this);
+                                iv.setImageResource(R.drawable.ic_rank_1);
+                                iv.setColorFilter(Color.rgb(255, 215, 0));
+                                LinearLayout.LayoutParams lpIv = new LinearLayout.LayoutParams(iconDim, iconDim);
+                                lpIv.setMargins(0, 0, 12, 0);
+                                iv.setLayoutParams(lpIv);
+                                row.addView(iv);
+                            } else if (i == 1) {
+                                ImageView iv = new ImageView(MainActivity.this);
+                                iv.setImageResource(R.drawable.ic_rank_2);
+                                iv.setColorFilter(Color.rgb(200, 214, 229));
+                                LinearLayout.LayoutParams lpIv = new LinearLayout.LayoutParams(iconDim, iconDim);
+                                lpIv.setMargins(0, 0, 12, 0);
+                                iv.setLayoutParams(lpIv);
+                                row.addView(iv);
+                            } else if (i == 2) {
+                                ImageView iv = new ImageView(MainActivity.this);
+                                iv.setImageResource(R.drawable.ic_rank_3);
+                                iv.setColorFilter(Color.rgb(205, 127, 50));
+                                LinearLayout.LayoutParams lpIv = new LinearLayout.LayoutParams(iconDim, iconDim);
+                                lpIv.setMargins(0, 0, 12, 0);
+                                iv.setLayoutParams(lpIv);
+                                row.addView(iv);
+                            } else {
+                                TextView rankPill = new TextView(MainActivity.this);
+                                rankPill.setText("#" + (i + 1));
+                                rankPill.setTypeface(font);
+                                rankPill.setTextSize(12);
+                                rankPill.setTextColor(Color.rgb(174, 183, 204));
+                                rankPill.setGravity(Gravity.CENTER);
+                                LinearLayout.LayoutParams lpPill = new LinearLayout.LayoutParams(iconDim, iconDim);
+                                lpPill.setMargins(0, 0, 12, 0);
+                                rankPill.setLayoutParams(lpPill);
+                                row.addView(rankPill);
+                            }
+
                             TextView rankName = new TextView(MainActivity.this);
-                            rankName.setText(rankLabel + e.name);
+                            rankName.setText(e.name + (isMe ? " (YOU)" : ""));
                             rankName.setTypeface(font);
                             rankName.setTextSize(14);
-                            rankName.setTextColor((i < 3) ? Color.rgb(255, 215, 0) : Color.WHITE);
+                            if (isMe) {
+                                rankName.setTextColor(Color.rgb(0, 229, 255));
+                            } else if (i == 0) {
+                                rankName.setTextColor(Color.rgb(255, 215, 0));
+                            } else if (i == 1) {
+                                rankName.setTextColor(Color.rgb(200, 214, 229));
+                            } else if (i == 2) {
+                                rankName.setTextColor(Color.rgb(205, 127, 50));
+                            } else {
+                                rankName.setTextColor(Color.WHITE);
+                            }
                             LinearLayout.LayoutParams lpName = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
                             rankName.setLayoutParams(lpName);
                             row.addView(rankName);
@@ -1029,7 +1249,7 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
                             scoreTv.setText(String.valueOf(e.score));
                             scoreTv.setTypeface(font);
                             scoreTv.setTextSize(15);
-                            scoreTv.setTextColor(Color.rgb(0, 229, 255));
+                            scoreTv.setTextColor(isMe ? Color.rgb(0, 229, 255) : Color.rgb(255, 213, 42));
                             row.addView(scoreTv);
 
                             listContainer.addView(row);
@@ -1123,7 +1343,7 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
             // Summarized Concise Specs
             String bioText = "• Coding, Art & Audio Design: Atif Arman\n" +
                     "• Typography: DotGothic16 by Fontworks (Google Fonts OFL)\n" +
-                    "• Edition: Version 2.0.0 (High-FPS Dynamic Edition)";
+                    "• Edition: Version 2.1.0 (High-FPS Dynamic Edition)";
 
             TextView content = new TextView(this);
             content.setText(bioText);
@@ -1166,15 +1386,7 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
             layout.addView(row3);
 
             // Close button
-            Button closeBtn = new Button(this);
-            closeBtn.setText("BACK TO MENU");
-            closeBtn.setTextColor(Color.WHITE);
-            closeBtn.setTypeface(font);
-            GradientDrawable btnCloseBg = new GradientDrawable();
-            btnCloseBg.setColor(Color.rgb(155, 89, 182));
-            btnCloseBg.setCornerRadius(14f);
-            closeBtn.setBackground(btnCloseBg);
-            closeBtn.setPadding(0, 16, 0, 16);
+            MaterialButton closeBtn = createMaterialIconButton(0, "BACK TO MENU", Color.rgb(155, 89, 182), Color.WHITE, font);
             LinearLayout.LayoutParams lpClose = new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
             lpClose.setMargins(0, 16, 0, 6);
@@ -1198,18 +1410,10 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
     }
 
     private void addSocialButton(LinearLayout row, int iconResId, String label, String url, int bgColor, AudioManager audioMgr, Typeface font) {
-        Button btn = new Button(this);
-        btn.setText(label);
-        btn.setTextColor(Color.WHITE);
-        btn.setTypeface(font);
-        btn.setTextSize(12);
-        setButtonVectorIcon(btn, iconResId, Color.WHITE);
-
-        GradientDrawable bg = new GradientDrawable();
-        bg.setColor(bgColor);
-        bg.setCornerRadius(12f);
-        btn.setBackground(bg);
-        btn.setPadding(14, 12, 14, 12);
+        MaterialButton btn = createMaterialIconButton(iconResId, label, Color.rgb(32, 38, 56), Color.WHITE, font);
+        btn.setTextSize(11);
+        btn.setStrokeColor(ColorStateList.valueOf(Color.rgb(45, 52, 75)));
+        btn.setStrokeWidth((int) (1 * getResources().getDisplayMetrics().density));
 
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
         lp.setMargins(4, 4, 4, 4);

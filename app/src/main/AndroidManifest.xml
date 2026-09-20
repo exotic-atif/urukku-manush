@@ -109,6 +109,38 @@
             </intent-filter>
         </activity-alias>
 
+        <activity-alias
+            android:name=".MainActivityHead5"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@drawable/head_5_icon"
+            android:roundIcon="@drawable/head_5_icon"
+            android:label="@string/app_name"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.GAME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityHead6"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@drawable/head_6_icon"
+            android:roundIcon="@drawable/head_6_icon"
+            android:label="@string/app_name"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.GAME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity-alias>
+
         <!-- In-App APK Updater FileProvider -->
         <provider
             android:name="androidx.core.content.FileProvider"
