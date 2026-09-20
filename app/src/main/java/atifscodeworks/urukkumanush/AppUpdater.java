@@ -4,6 +4,9 @@ import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageInfo;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Handler;
@@ -31,6 +34,7 @@ public class AppUpdater {
     private static final String TAG = "AppUpdater";
 
     public static final String GITHUB_REPO_API = "https://api.github.com/repos/exotic-atif/urukku-manush/releases/latest";
+    public static final String GITHUB_RAW_VERSION = "https://raw.githubusercontent.com/exotic-atif/urukku-manush/main/version.json";
     public static final String GITHUB_RELEASES_WEB = "https://github.com/exotic-atif/urukku-manush/releases";
 
     private final Context context;
@@ -88,6 +92,23 @@ public class AppUpdater {
         }
     }
 
+    private HttpURLConnection openConnectionWithActiveNetwork(URL url) throws Exception {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            try {
+                ConnectivityManager cm = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+                if (cm != null) {
+                    Network activeNet = cm.getActiveNetwork();
+                    if (activeNet != null) {
+                        return (HttpURLConnection) activeNet.openConnection(url);
+                    }
+                }
+            } catch (Throwable t) {
+                Log.w(TAG, "Failed binding connection to active network", t);
+            }
+        }
+        return (HttpURLConnection) url.openConnection();
+    }
+
     public void cleanOldUpdates() {
         executor.execute(() -> {
             try {
@@ -109,72 +130,123 @@ public class AppUpdater {
 
     public void checkForUpdates(CheckCallback callback) {
         executor.execute(() -> {
-            HttpURLConnection conn = null;
-            try {
-                URL url = new URL(GITHUB_REPO_API);
-                conn = (HttpURLConnection) url.openConnection();
-                conn.setRequestMethod("GET");
-                conn.setRequestProperty("User-Agent", "UrukkuManush-Updater");
-                conn.setRequestProperty("Accept", "application/vnd.github.v3+json");
-                conn.setConnectTimeout(8000);
-                conn.setReadTimeout(8000);
+            // First attempt: GitHub API
+            ReleaseInfo apiInfo = tryFetchGitHubApi();
+            if (apiInfo != null) {
+                mainHandler.post(() -> callback.onSuccess(apiInfo));
+                return;
+            }
 
-                int code = conn.getResponseCode();
-                if (code == HttpURLConnection.HTTP_OK) {
-                    BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8));
-                    StringBuilder sb = new StringBuilder();
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        sb.append(line);
-                    }
-                    reader.close();
+            // Fallback attempt: GitHub Raw version.json (works even if API rate limited or restricted)
+            ReleaseInfo rawInfo = tryFetchRawVersionJson();
+            if (rawInfo != null) {
+                mainHandler.post(() -> callback.onSuccess(rawInfo));
+                return;
+            }
 
-                    JSONObject json = new JSONObject(sb.toString());
-                    String tagName = json.optString("tag_name", "v2.0.0");
-                    String releaseTitle = json.optString("name", "Urukku Manush " + tagName);
-                    String changelog = json.optString("body", "• Performance optimizations and bug fixes.\n• High refresh rate display support.\n• Security and leaderboard updates.");
-                    String htmlUrl = json.optString("html_url", GITHUB_RELEASES_WEB);
+            mainHandler.post(() -> callback.onError("Network unreachable or server rate limit. Check internet connection."));
+        });
+    }
 
-                    String downloadUrl = "";
-                    long sizeBytes = 0;
+    private ReleaseInfo tryFetchGitHubApi() {
+        HttpURLConnection conn = null;
+        try {
+            URL url = new URL(GITHUB_REPO_API);
+            conn = openConnectionWithActiveNetwork(url);
+            conn.setRequestMethod("GET");
+            conn.setRequestProperty("User-Agent", "UrukkuManush-Updater");
+            conn.setRequestProperty("Accept", "application/vnd.github.v3+json");
+            conn.setConnectTimeout(8000);
+            conn.setReadTimeout(8000);
 
-                    JSONArray assets = json.optJSONArray("assets");
-                    if (assets != null && assets.length() > 0) {
-                        for (int i = 0; i < assets.length(); i++) {
-                            JSONObject asset = assets.getJSONObject(i);
-                            String assetName = asset.optString("name", "");
-                            if (assetName.endsWith(".apk")) {
-                                downloadUrl = asset.optString("browser_download_url", "");
-                                sizeBytes = asset.optLong("size", 0);
-                                break;
-                            }
+            int code = conn.getResponseCode();
+            if (code == HttpURLConnection.HTTP_OK) {
+                BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8));
+                StringBuilder sb = new StringBuilder();
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    sb.append(line);
+                }
+                reader.close();
+
+                JSONObject json = new JSONObject(sb.toString());
+                String tagName = json.optString("tag_name", "v2.0.0");
+                String releaseTitle = json.optString("name", "Urukku Manush " + tagName);
+                String changelog = json.optString("body", "• Performance optimizations and bug fixes.\n• High refresh rate display support.\n• Security and leaderboard updates.");
+                String htmlUrl = json.optString("html_url", GITHUB_RELEASES_WEB);
+
+                String downloadUrl = "";
+                long sizeBytes = 0;
+
+                JSONArray assets = json.optJSONArray("assets");
+                if (assets != null && assets.length() > 0) {
+                    for (int i = 0; i < assets.length(); i++) {
+                        JSONObject asset = assets.getJSONObject(i);
+                        String assetName = asset.optString("name", "");
+                        if (assetName.endsWith(".apk")) {
+                            downloadUrl = asset.optString("browser_download_url", "");
+                            sizeBytes = asset.optLong("size", 0);
+                            break;
                         }
                     }
-
-                    if (downloadUrl.isEmpty()) {
-                        downloadUrl = "https://github.com/exotic-atif/urukku-manush/releases/latest/download/urukku_manush.apk";
-                    }
-
-                    String cleanRemote = tagName.replaceAll("[^0-9.]", "");
-                    String cleanCur = getCurrentVersion().replaceAll("[^0-9.]", "");
-                    boolean isUpdate = isVersionGreater(cleanRemote, cleanCur);
-
-                    final ReleaseInfo info = new ReleaseInfo(tagName, releaseTitle, changelog, downloadUrl, htmlUrl, sizeBytes, isUpdate);
-                    mainHandler.post(() -> callback.onSuccess(info));
-                    return;
                 }
 
-                mainHandler.post(() -> callback.onError("GitHub release check returned status: " + code));
-            } catch (java.net.UnknownHostException e) {
-                Log.w(TAG, "Network host unreachable: " + e.getMessage());
-                mainHandler.post(() -> callback.onError("No internet connection. Please turn on Mobile Data or connect to working Wi-Fi and try again."));
-            } catch (Exception e) {
-                Log.e(TAG, "Error checking updates from GitHub", e);
-                mainHandler.post(() -> callback.onError(e.getMessage() != null ? e.getMessage() : "Network connection failed. Please check internet."));
-            } finally {
-                if (conn != null) conn.disconnect();
+                if (downloadUrl.isEmpty()) {
+                    downloadUrl = "https://github.com/exotic-atif/urukku-manush/releases/latest/download/urukku_manush.apk";
+                }
+
+                String cleanRemote = tagName.replaceAll("[^0-9.]", "");
+                String cleanCur = getCurrentVersion().replaceAll("[^0-9.]", "");
+                boolean isUpdate = isVersionGreater(cleanRemote, cleanCur);
+
+                return new ReleaseInfo(tagName, releaseTitle, changelog, downloadUrl, htmlUrl, sizeBytes, isUpdate);
             }
-        });
+        } catch (Exception e) {
+            Log.w(TAG, "GitHub API fetch failed, trying raw fallback: " + e.getMessage());
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
+        return null;
+    }
+
+    private ReleaseInfo tryFetchRawVersionJson() {
+        HttpURLConnection conn = null;
+        try {
+            URL url = new URL(GITHUB_RAW_VERSION);
+            conn = openConnectionWithActiveNetwork(url);
+            conn.setRequestMethod("GET");
+            conn.setRequestProperty("User-Agent", "UrukkuManush-Updater");
+            conn.setConnectTimeout(8000);
+            conn.setReadTimeout(8000);
+
+            int code = conn.getResponseCode();
+            if (code == HttpURLConnection.HTTP_OK) {
+                BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8));
+                StringBuilder sb = new StringBuilder();
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    sb.append(line);
+                }
+                reader.close();
+
+                JSONObject json = new JSONObject(sb.toString());
+                String tagName = json.optString("version", "v2.0.0");
+                String releaseTitle = json.optString("name", "Urukku Manush " + tagName);
+                String changelog = json.optString("changelog", "• Latest game features and optimizations.");
+                String downloadUrl = json.optString("downloadUrl", "https://github.com/exotic-atif/urukku-manush/releases/latest/download/urukku_manush.apk");
+
+                String cleanRemote = tagName.replaceAll("[^0-9.]", "");
+                String cleanCur = getCurrentVersion().replaceAll("[^0-9.]", "");
+                boolean isUpdate = isVersionGreater(cleanRemote, cleanCur);
+
+                return new ReleaseInfo(tagName, releaseTitle, changelog, downloadUrl, GITHUB_RELEASES_WEB, 25000000L, isUpdate);
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Raw version fetch failed: " + e.getMessage());
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
+        return null;
     }
 
     private boolean isVersionGreater(String remote, String current) {
@@ -212,7 +284,7 @@ public class AppUpdater {
                 int redirects = 0;
                 while (redirects < 6) {
                     URL u = new URL(currentUrl);
-                    conn = (HttpURLConnection) u.openConnection();
+                    conn = openConnectionWithActiveNetwork(u);
                     conn.setInstanceFollowRedirects(true);
                     conn.setRequestProperty("User-Agent", "UrukkuManush-Updater");
                     conn.setConnectTimeout(10000);

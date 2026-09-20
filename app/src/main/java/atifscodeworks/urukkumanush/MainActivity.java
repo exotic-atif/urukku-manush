@@ -463,6 +463,43 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
                 tvStatus.setText("Could not reach GitHub Releases.\n" + error);
                 tvStatus.setTextColor(Color.rgb(255, 100, 100));
 
+                LinearLayout btnRow = new LinearLayout(MainActivity.this);
+                btnRow.setOrientation(LinearLayout.HORIZONTAL);
+                btnRow.setPadding(0, 16, 0, 0);
+
+                Button retryBtn = new Button(MainActivity.this);
+                retryBtn.setText("🔄 RETRY");
+                retryBtn.setTypeface(font);
+                retryBtn.setTextColor(Color.WHITE);
+                GradientDrawable retBg = new GradientDrawable();
+                retBg.setColor(Color.rgb(46, 204, 113));
+                retBg.setCornerRadius(12f);
+                retryBtn.setBackground(retBg);
+                LinearLayout.LayoutParams lpRet = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+                lpRet.setMargins(0, 0, 6, 0);
+                retryBtn.setLayoutParams(lpRet);
+                retryBtn.setOnClickListener(v -> {
+                    dialog.dismiss();
+                    startUpdateCheck();
+                });
+                btnRow.addView(retryBtn);
+
+                Button webBtn = new Button(MainActivity.this);
+                webBtn.setText("🌐 BROWSER");
+                webBtn.setTypeface(font);
+                webBtn.setTextColor(Color.WHITE);
+                GradientDrawable wBg = new GradientDrawable();
+                wBg.setColor(Color.rgb(52, 152, 219));
+                wBg.setCornerRadius(12f);
+                webBtn.setBackground(wBg);
+                LinearLayout.LayoutParams lpW = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+                lpW.setMargins(6, 0, 6, 0);
+                webBtn.setLayoutParams(lpW);
+                webBtn.setOnClickListener(v -> {
+                    openUrlSafely(AppUpdater.GITHUB_RELEASES_WEB);
+                });
+                btnRow.addView(webBtn);
+
                 Button closeBtn = new Button(MainActivity.this);
                 closeBtn.setText("CLOSE");
                 closeBtn.setTypeface(font);
@@ -471,8 +508,13 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
                 bBg.setColor(Color.rgb(60, 70, 90));
                 bBg.setCornerRadius(12f);
                 closeBtn.setBackground(bBg);
+                LinearLayout.LayoutParams lpCls = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+                lpCls.setMargins(6, 0, 0, 0);
+                closeBtn.setLayoutParams(lpCls);
                 closeBtn.setOnClickListener(v -> dialog.dismiss());
-                layout.addView(closeBtn);
+                btnRow.addView(closeBtn);
+
+                layout.addView(btnRow);
             }
         });
     }

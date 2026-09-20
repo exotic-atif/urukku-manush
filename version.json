@@ -1,6 +1,8 @@
 {
   "version": "v2.0.0",
-  "name": "Urukku Manush",
+  "name": "Urukku Manush v2.0.0",
   "versionCode": 2,
-  "developer": "Atif Arman (Exotic Atif)"
+  "developer": "Atif Arman (Exotic Atif)",
+  "downloadUrl": "https://github.com/exotic-atif/urukku-manush/releases/latest/download/urukku_manush.apk",
+  "changelog": "• Activation code security: SHA-256 binary validation.\n• Scaled app launcher icons with dynamic skin switching.\n• Supabase Global Leaderboard integration.\n• High-performance RGB_565 downsampling & audio memory cleanup.\n• In-app Software Update Center."
 }
