@@ -9,6 +9,7 @@ local.properties
 .externalNativeBuild
 .cxx
 *.apk
+.vscode/
 
 assets/audios/*/*
 !assets/audios/*/*.md
