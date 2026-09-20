@@ -23,4 +23,8 @@ assets/fonts/*
 assets/txt/*
 !assets/txt/*.md
 
+assets/bin/*
+!assets/bin/*.md
+
 app/src/main/res/drawable/app_logo.png
+app/src/main/res/drawable/head_*_icon.png

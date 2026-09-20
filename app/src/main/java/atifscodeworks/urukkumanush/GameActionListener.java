@@ -4,4 +4,6 @@ public interface GameActionListener {
     void onShowActivationDialog(Runnable onActivated);
     void onShowOptionsDialog();
     void onShowCreditsDialog();
+    void onShowLeaderboardDialog();
 }
+

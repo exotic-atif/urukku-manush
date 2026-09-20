@@ -79,9 +79,16 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
     private final RectF btnGameOverMenu = new RectF();
     private final RectF gameOverCard = new RectF();
 
+    // Reusable cached RectFs and Paints to avoid GC allocation during rendering
+    private final RectF tempRect = new RectF();
+    private final RectF tempRect2 = new RectF();
+    private final RectF menuLogoDestRect = new RectF();
+
     // Paints
     private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint textStrokePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint leftAlignPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint leftStrokePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint uiPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint uiStrokePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint overlayPaint = new Paint();
@@ -126,6 +133,14 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
         textStrokePaint.setTypeface(dotGothic);
         textStrokePaint.setStyle(Paint.Style.STROKE);
         textStrokePaint.setColor(Color.BLACK);
+
+        leftAlignPaint.setTextAlign(Paint.Align.LEFT);
+        leftAlignPaint.setTypeface(dotGothic);
+
+        leftStrokePaint.setTextAlign(Paint.Align.LEFT);
+        leftStrokePaint.setTypeface(dotGothic);
+        leftStrokePaint.setStyle(Paint.Style.STROKE);
+        leftStrokePaint.setColor(Color.BLACK);
 
         uiPaint.setStyle(Paint.Style.FILL);
         uiStrokePaint.setStyle(Paint.Style.STROKE);
@@ -362,6 +377,7 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
     }
 
     public void startNewGame() {
+        audioManager.stopLoseSound();
         currentScore = 0;
         isNewBest = false;
         obstacles.clear();
@@ -521,26 +537,30 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
         canvas.drawText(bestText, centerX, badgeY, textStrokePaint);
         canvas.drawText(bestText, centerX, badgeY, textPaint);
 
-        // Draw bobbing logo on starting menu screen
+        // Draw bobbing logo or unlocked character on starting menu screen
         float bobOffset = (float) Math.sin(menuBobbingTimer) * (screenHeight * 0.025f);
         float logoH = screenHeight * 0.22f;
         float charX = centerX;
         float charY = screenHeight * 0.46f + bobOffset;
 
-        // Soft aura behind logo
+        // Soft aura behind logo or character
         uiPaint.setColor(Color.argb(70, 0, 229, 255));
         canvas.drawCircle(charX, charY, logoH * 0.65f, uiPaint);
 
-        if (logoBitmap != null) {
-            float aspect = (float) logoBitmap.getWidth() / logoBitmap.getHeight();
+        Bitmap displayBmp = (activationManager.isActivated() && player.getHeadBitmap() != null)
+                ? player.getHeadBitmap()
+                : logoBitmap;
+
+        if (displayBmp != null) {
+            float aspect = (float) displayBmp.getWidth() / displayBmp.getHeight();
             float logoW = logoH * aspect;
-            RectF destRect = new RectF(charX - logoW / 2f, charY - logoH / 2f, charX + logoW / 2f, charY + logoH / 2f);
-            canvas.drawBitmap(logoBitmap, null, destRect, null);
+            menuLogoDestRect.set(charX - logoW / 2f, charY - logoH / 2f, charX + logoW / 2f, charY + logoH / 2f);
+            canvas.drawBitmap(displayBmp, null, menuLogoDestRect, null);
         }
 
         // Draw 3 Menu Buttons
         drawStyledButton(canvas, btnPlay, "PLAY", Color.rgb(46, 204, 113), Color.rgb(39, 174, 96));
-        drawStyledButton(canvas, btnOptions, "OPTIONS", Color.rgb(52, 152, 219), Color.rgb(41, 128, 185));
+        drawStyledButton(canvas, btnOptions, "SETTINGS", Color.rgb(52, 152, 219), Color.rgb(41, 128, 185));
         drawStyledButton(canvas, btnCredits, "CREDITS", Color.rgb(155, 89, 182), Color.rgb(142, 68, 173));
     }
 
@@ -556,17 +576,12 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
         canvas.drawText(String.valueOf(currentScore), screenWidth / 2.0f, scoreY, textPaint);
 
         // Top Left: High Score
-        textStrokePaint.setTextSize(screenHeight * 0.05f);
-        textStrokePaint.setStrokeWidth(screenHeight * 0.007f);
-        textPaint.setTextSize(screenHeight * 0.05f);
-        textPaint.setColor(Color.rgb(255, 215, 0));
+        leftStrokePaint.setTextSize(screenHeight * 0.05f);
+        leftStrokePaint.setStrokeWidth(screenHeight * 0.007f);
+        leftAlignPaint.setTextSize(screenHeight * 0.05f);
+        leftAlignPaint.setColor(Color.rgb(255, 215, 0));
 
         String bestText = "BEST: " + Math.max(currentScore, scoreManager.getHighScore());
-        Paint leftAlignPaint = new Paint(textPaint);
-        leftAlignPaint.setTextAlign(Paint.Align.LEFT);
-        Paint leftStrokePaint = new Paint(textStrokePaint);
-        leftStrokePaint.setTextAlign(Paint.Align.LEFT);
-
         canvas.drawText(bestText, screenHeight * 0.04f, screenHeight * 0.10f, leftStrokePaint);
         canvas.drawText(bestText, screenHeight * 0.04f, screenHeight * 0.10f, leftAlignPaint);
 
@@ -577,7 +592,7 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
         uiStrokePaint.setStrokeWidth(4f);
         canvas.drawRoundRect(btnPause, 16f, 16f, uiStrokePaint);
 
-        // Draw ⏸ pause symbol
+        // Draw ⏸ pause symbol without object allocation
         uiPaint.setColor(Color.WHITE);
         float barW = btnPause.width() * 0.18f;
         float barH = btnPause.height() * 0.50f;
@@ -585,8 +600,10 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
         float cx = btnPause.centerX();
         float cy = btnPause.centerY();
 
-        canvas.drawRoundRect(new RectF(cx - gap - barW, cy - barH / 2f, cx - gap, cy + barH / 2f), 4f, 4f, uiPaint);
-        canvas.drawRoundRect(new RectF(cx + gap, cy - barH / 2f, cx + gap + barW, cy + barH / 2f), 4f, 4f, uiPaint);
+        tempRect.set(cx - gap - barW, cy - barH / 2f, cx - gap, cy + barH / 2f);
+        canvas.drawRoundRect(tempRect, 4f, 4f, uiPaint);
+        tempRect2.set(cx + gap, cy - barH / 2f, cx + gap + barW, cy + barH / 2f);
+        canvas.drawRoundRect(tempRect2, 4f, 4f, uiPaint);
     }
 
     private void drawPausedOverlay(Canvas canvas) {
@@ -682,9 +699,9 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
     }
 
     private void drawStyledButton(Canvas canvas, RectF rect, String label, int topColor, int bottomColor) {
-        RectF shadowRect = new RectF(rect.left, rect.top + 6f, rect.right, rect.bottom + 6f);
+        tempRect.set(rect.left, rect.top + 6f, rect.right, rect.bottom + 6f);
         uiPaint.setColor(Color.argb(90, 0, 0, 0));
-        canvas.drawRoundRect(shadowRect, 18f, 18f, uiPaint);
+        canvas.drawRoundRect(tempRect, 18f, 18f, uiPaint);
 
         uiPaint.setColor(topColor);
         canvas.drawRoundRect(rect, 18f, 18f, uiPaint);

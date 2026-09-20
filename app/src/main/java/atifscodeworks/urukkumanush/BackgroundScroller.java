@@ -38,7 +38,9 @@ public class BackgroundScroller {
         this.currentScrollSpeed = baseScrollSpeed;
 
         try (InputStream is = context.getAssets().open("imgs/bg.png")) {
-            Bitmap raw = BitmapFactory.decodeStream(is);
+            BitmapFactory.Options opts = new BitmapFactory.Options();
+            opts.inPreferredConfig = Bitmap.Config.RGB_565;
+            Bitmap raw = BitmapFactory.decodeStream(is, null, opts);
             if (raw != null) {
                 float scale = (float) height / raw.getHeight();
                 tileWidth = (int) Math.ceil(raw.getWidth() * scale);

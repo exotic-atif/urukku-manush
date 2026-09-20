@@ -70,7 +70,16 @@ public class Player {
 
     public void loadHeadBitmap(String headAssetName) {
         try (InputStream is = context.getAssets().open("imgs/" + headAssetName)) {
-            headBitmap = BitmapFactory.decodeStream(is);
+            if (headBitmap != null && !headBitmap.isRecycled()) {
+                headBitmap.recycle();
+            }
+            if (scaledBitmap != null && !scaledBitmap.isRecycled()) {
+                scaledBitmap.recycle();
+            }
+
+            BitmapFactory.Options opts = new BitmapFactory.Options();
+            opts.inPreferredConfig = Bitmap.Config.ARGB_8888;
+            headBitmap = BitmapFactory.decodeStream(is, null, opts);
             if (headBitmap != null && playerHeight > 0) {
                 float aspect = (float) headBitmap.getWidth() / headBitmap.getHeight();
                 playerWidth = playerHeight * aspect;
@@ -84,6 +93,10 @@ public class Player {
                 loadHeadBitmap("head_1.png");
             }
         }
+    }
+
+    public Bitmap getHeadBitmap() {
+        return scaledBitmap != null ? scaledBitmap : headBitmap;
     }
 
     public void jump() {

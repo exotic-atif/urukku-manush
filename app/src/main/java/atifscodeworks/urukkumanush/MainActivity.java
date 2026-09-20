@@ -17,6 +17,7 @@ import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -27,15 +28,21 @@ import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
 
 import java.io.File;
+import java.util.List;
 
 public class MainActivity extends AppCompatActivity implements GameActionListener {
     private static final String TAG = "MainActivity";
 
     private GameView gameView;
+    private LeaderboardManager leaderboardManager;
+    private AppUpdater appUpdater;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        leaderboardManager = new LeaderboardManager(this);
+        appUpdater = new AppUpdater(this);
 
         // Ensure external storage folder sdcard/Android/data/atifscodeworks.urukkumanush/files is created
         ensureExternalDataDirectory();
@@ -115,6 +122,17 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
         super.onWindowFocusChanged(hasFocus);
         if (hasFocus) {
             setupImmersiveFullscreen();
+            if (gameView != null && gameView.getAudioManager() != null) {
+                gameView.getAudioManager().resumeAll(gameView.getGameState() == GameView.State.PLAYING);
+            }
+        } else {
+            // Notification shade pulled down, incoming call, or app minimized
+            if (gameView != null) {
+                gameView.pauseGame();
+                if (gameView.getAudioManager() != null) {
+                    gameView.getAudioManager().pauseAll();
+                }
+            }
         }
     }
 
@@ -123,6 +141,9 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
         super.onPause();
         if (gameView != null) {
             gameView.pauseGame();
+            if (gameView.getAudioManager() != null) {
+                gameView.getAudioManager().pauseAll();
+            }
         }
     }
 
@@ -131,6 +152,9 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
         super.onResume();
         setupImmersiveFullscreen();
         enableHighRefreshRate();
+        if (gameView != null && gameView.getAudioManager() != null) {
+            gameView.getAudioManager().resumeAll(gameView.getGameState() == GameView.State.PLAYING);
+        }
     }
 
     @Override
@@ -258,7 +282,6 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
     public void onShowOptionsDialog() {
         runOnUiThread(() -> {
             AudioManager audioMgr = gameView.getAudioManager();
-            ScoreManager scoreMgr = gameView.getScoreManager();
             Typeface font = getGameFont();
 
             AlertDialog.Builder builder = new AlertDialog.Builder(this);
@@ -274,13 +297,23 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
             layout.setBackground(bg);
 
             TextView title = new TextView(this);
-            title.setText("⚙️ Game Options");
+            title.setText("⚙️ Game Settings");
             title.setTextSize(22);
             title.setTypeface(font);
             title.setTextColor(Color.rgb(0, 229, 255));
             title.setGravity(Gravity.CENTER);
-            title.setPadding(0, 0, 0, 24);
+            title.setPadding(0, 0, 0, 20);
             layout.addView(title);
+
+            // Version label
+            TextView verLabel = new TextView(this);
+            verLabel.setText("Urukku Manush v" + appUpdater.getCurrentVersion());
+            verLabel.setTextSize(13);
+            verLabel.setTypeface(font);
+            verLabel.setTextColor(Color.rgb(180, 195, 220));
+            verLabel.setGravity(Gravity.CENTER);
+            verLabel.setPadding(0, 0, 0, 16);
+            layout.addView(verLabel);
 
             // Mute SFX checkbox
             CheckBox cbMuteSfx = new CheckBox(this);
@@ -308,20 +341,35 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
             });
             layout.addView(cbMuteBgm);
 
-            // Reset High Score button
-            Button resetScoreBtn = new Button(this);
-            resetScoreBtn.setText("RESET HIGH SCORE");
-            resetScoreBtn.setTextColor(Color.WHITE);
-            resetScoreBtn.setTypeface(font);
-            GradientDrawable btnResetBg = new GradientDrawable();
-            btnResetBg.setColor(Color.rgb(231, 76, 60));
-            btnResetBg.setCornerRadius(12f);
-            resetScoreBtn.setBackground(btnResetBg);
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+            // Leaderboard button
+            Button leaderboardBtn = new Button(this);
+            leaderboardBtn.setText("🏆 LEADERBOARD");
+            leaderboardBtn.setTextColor(Color.WHITE);
+            leaderboardBtn.setTypeface(font);
+            GradientDrawable btnLeadBg = new GradientDrawable();
+            btnLeadBg.setColor(Color.rgb(243, 156, 18));
+            btnLeadBg.setCornerRadius(12f);
+            leaderboardBtn.setBackground(btnLeadBg);
+            LinearLayout.LayoutParams lpLead = new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-            lp.setMargins(0, 24, 0, 16);
-            resetScoreBtn.setLayoutParams(lp);
-            layout.addView(resetScoreBtn);
+            lpLead.setMargins(0, 20, 0, 10);
+            leaderboardBtn.setLayoutParams(lpLead);
+            layout.addView(leaderboardBtn);
+
+            // In-App Check Updates button
+            Button updateBtn = new Button(this);
+            updateBtn.setText("🔄 CHECK FOR UPDATES");
+            updateBtn.setTextColor(Color.WHITE);
+            updateBtn.setTypeface(font);
+            GradientDrawable btnUpBg = new GradientDrawable();
+            btnUpBg.setColor(Color.rgb(46, 204, 113));
+            btnUpBg.setCornerRadius(12f);
+            updateBtn.setBackground(btnUpBg);
+            LinearLayout.LayoutParams lpUp = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+            lpUp.setMargins(0, 0, 0, 14);
+            updateBtn.setLayoutParams(lpUp);
+            layout.addView(updateBtn);
 
             // Close button
             Button closeBtn = new Button(this);
@@ -343,11 +391,573 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
             }
             dialog.show();
 
-            resetScoreBtn.setOnClickListener(v -> {
+            leaderboardBtn.setOnClickListener(v -> {
                 audioMgr.playClickSound();
-                scoreMgr.resetHighScore();
-                Toast.makeText(this, "High score reset to 0!", Toast.LENGTH_SHORT).show();
                 dialog.dismiss();
+                onShowLeaderboardDialog();
+            });
+
+            updateBtn.setOnClickListener(v -> {
+                audioMgr.playClickSound();
+                dialog.dismiss();
+                startUpdateCheck();
+            });
+
+            closeBtn.setOnClickListener(v -> {
+                audioMgr.playClickSound();
+                dialog.dismiss();
+            });
+        });
+    }
+
+    private void startUpdateCheck() {
+        Typeface font = getGameFont();
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setPadding(50, 40, 50, 40);
+
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(Color.rgb(20, 24, 38));
+        bg.setCornerRadius(24f);
+        bg.setStroke(3, Color.rgb(0, 229, 255));
+        layout.setBackground(bg);
+
+        TextView tvTitle = new TextView(this);
+        tvTitle.setText("Update Wizard");
+        tvTitle.setTextSize(19);
+        tvTitle.setTypeface(font);
+        tvTitle.setTextColor(Color.rgb(0, 229, 255));
+        tvTitle.setGravity(Gravity.CENTER);
+        layout.addView(tvTitle);
+
+        TextView tvStatus = new TextView(this);
+        tvStatus.setText("Checking GitHub for the latest release...");
+        tvStatus.setTextSize(14);
+        tvStatus.setTypeface(font);
+        tvStatus.setTextColor(Color.WHITE);
+        tvStatus.setGravity(Gravity.CENTER);
+        tvStatus.setPadding(0, 20, 0, 20);
+        layout.addView(tvStatus);
+
+        ProgressBar spinner = new ProgressBar(this);
+        layout.addView(spinner);
+
+        builder.setView(layout);
+        AlertDialog dialog = builder.create();
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
+        }
+        dialog.show();
+
+        appUpdater.checkForUpdates(new AppUpdater.CheckCallback() {
+            @Override
+            public void onSuccess(AppUpdater.ReleaseInfo releaseInfo) {
+                dialog.dismiss();
+                showUpdateCenterDialog(releaseInfo);
+            }
+
+            @Override
+            public void onError(String error) {
+                spinner.setVisibility(View.GONE);
+                tvStatus.setText("Could not reach GitHub Releases.\n" + error);
+                tvStatus.setTextColor(Color.rgb(255, 100, 100));
+
+                Button closeBtn = new Button(MainActivity.this);
+                closeBtn.setText("CLOSE");
+                closeBtn.setTypeface(font);
+                closeBtn.setTextColor(Color.WHITE);
+                GradientDrawable bBg = new GradientDrawable();
+                bBg.setColor(Color.rgb(60, 70, 90));
+                bBg.setCornerRadius(12f);
+                closeBtn.setBackground(bBg);
+                closeBtn.setOnClickListener(v -> dialog.dismiss());
+                layout.addView(closeBtn);
+            }
+        });
+    }
+
+    private void showUpdateCenterDialog(AppUpdater.ReleaseInfo info) {
+        Typeface font = getGameFont();
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        ScrollView scrollView = new ScrollView(this);
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setPadding(40, 30, 40, 30);
+
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(Color.rgb(18, 22, 34));
+        bg.setCornerRadius(24f);
+        bg.setStroke(3, info.isUpdateAvailable ? Color.rgb(46, 204, 113) : Color.rgb(0, 229, 255));
+        layout.setBackground(bg);
+
+        // Header Title
+        TextView title = new TextView(this);
+        title.setText("Update Wizard");
+        title.setTextSize(20);
+        title.setTypeface(font);
+        title.setTextColor(Color.rgb(255, 215, 0));
+        title.setGravity(Gravity.CENTER);
+        layout.addView(title);
+
+        // Status Badge
+        TextView badge = new TextView(this);
+        badge.setText(info.isUpdateAvailable ? "⚡ NEW VERSION READY TO INSTALL" : "✅ YOU ARE UP TO DATE");
+        badge.setTextSize(13);
+        badge.setTypeface(font);
+        badge.setTextColor(info.isUpdateAvailable ? Color.rgb(46, 204, 113) : Color.rgb(0, 229, 255));
+        badge.setGravity(Gravity.CENTER);
+        badge.setPadding(0, 8, 0, 14);
+        layout.addView(badge);
+
+        // Info Card
+        LinearLayout infoCard = new LinearLayout(this);
+        infoCard.setOrientation(LinearLayout.VERTICAL);
+        infoCard.setPadding(20, 16, 20, 16);
+        GradientDrawable cardBg = new GradientDrawable();
+        cardBg.setColor(Color.rgb(28, 33, 50));
+        cardBg.setCornerRadius(14f);
+        infoCard.setBackground(cardBg);
+        LinearLayout.LayoutParams lpCard = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        lpCard.setMargins(0, 0, 0, 16);
+        infoCard.setLayoutParams(lpCard);
+
+        TextView relName = new TextView(this);
+        relName.setText(info.releaseTitle);
+        relName.setTextSize(15);
+        relName.setTypeface(font);
+        relName.setTextColor(Color.WHITE);
+        infoCard.addView(relName);
+
+        TextView verCompare = new TextView(this);
+        verCompare.setText("Installed: v" + appUpdater.getCurrentVersion() + "   ➔   Available: " + info.tagName);
+        verCompare.setTextSize(13);
+        verCompare.setTypeface(font);
+        verCompare.setTextColor(Color.rgb(0, 229, 255));
+        verCompare.setPadding(0, 6, 0, 4);
+        infoCard.addView(verCompare);
+
+        TextView pkgSize = new TextView(this);
+        pkgSize.setText("Package Size: " + info.getFormattedSize());
+        pkgSize.setTextSize(12);
+        pkgSize.setTypeface(font);
+        pkgSize.setTextColor(Color.rgb(180, 195, 220));
+        infoCard.addView(pkgSize);
+
+        layout.addView(infoCard);
+
+        // Changelog Section Header
+        TextView notesHeader = new TextView(this);
+        notesHeader.setText("📋 PATCH NOTES & DETAILS");
+        notesHeader.setTextSize(14);
+        notesHeader.setTypeface(font);
+        notesHeader.setTextColor(Color.rgb(255, 215, 0));
+        notesHeader.setPadding(0, 0, 0, 8);
+        layout.addView(notesHeader);
+
+        // Changelog text box
+        ScrollView notesScroll = new ScrollView(this);
+        notesScroll.setLayoutParams(new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 260));
+        GradientDrawable notesBg = new GradientDrawable();
+        notesBg.setColor(Color.rgb(24, 28, 42));
+        notesBg.setCornerRadius(10f);
+        notesScroll.setBackground(notesBg);
+        notesScroll.setPadding(16, 12, 16, 12);
+
+        TextView notesText = new TextView(this);
+        notesText.setText(info.changelog);
+        notesText.setTextSize(13);
+        notesText.setTypeface(font);
+        notesText.setTextColor(Color.rgb(215, 225, 245));
+        notesScroll.addView(notesText);
+        layout.addView(notesScroll);
+
+        // Live Progress Container (hidden initially)
+        LinearLayout progressContainer = new LinearLayout(this);
+        progressContainer.setOrientation(LinearLayout.VERTICAL);
+        progressContainer.setPadding(0, 16, 0, 0);
+        progressContainer.setVisibility(View.GONE);
+
+        TextView progressLabel = new TextView(this);
+        progressLabel.setText("Downloading update package...");
+        progressLabel.setTextSize(13);
+        progressLabel.setTypeface(font);
+        progressLabel.setTextColor(Color.rgb(0, 229, 255));
+        progressContainer.addView(progressLabel);
+
+        ProgressBar progressBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        progressBar.setMax(100);
+        progressBar.setProgress(0);
+        LinearLayout.LayoutParams lpProgress = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 26);
+        lpProgress.setMargins(0, 10, 0, 6);
+        progressBar.setLayoutParams(lpProgress);
+        progressContainer.addView(progressBar);
+
+        TextView progressStats = new TextView(this);
+        progressStats.setText("0% • 0 MB / " + info.getFormattedSize());
+        progressStats.setTextSize(12);
+        progressStats.setTypeface(font);
+        progressStats.setTextColor(Color.rgb(180, 195, 220));
+        progressContainer.addView(progressStats);
+
+        layout.addView(progressContainer);
+
+        // Action Buttons Row
+        Button actionBtn = new Button(this);
+        actionBtn.setText(info.isUpdateAvailable ? "DOWNLOAD & INSTALL" : "RE-INSTALL LATEST (v" + info.tagName + ")");
+        actionBtn.setTextColor(Color.WHITE);
+        actionBtn.setTypeface(font);
+        GradientDrawable actBg = new GradientDrawable();
+        actBg.setColor(Color.rgb(46, 204, 113));
+        actBg.setCornerRadius(12f);
+        actionBtn.setBackground(actBg);
+        LinearLayout.LayoutParams lpAct = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        lpAct.setMargins(0, 20, 0, 8);
+        actionBtn.setLayoutParams(lpAct);
+        layout.addView(actionBtn);
+
+        LinearLayout rowButtons = new LinearLayout(this);
+        rowButtons.setOrientation(LinearLayout.HORIZONTAL);
+
+        Button webBtn = new Button(this);
+        webBtn.setText("🌐 VIEW ON GITHUB");
+        webBtn.setTextColor(Color.WHITE);
+        webBtn.setTypeface(font);
+        GradientDrawable webBg = new GradientDrawable();
+        webBg.setColor(Color.rgb(36, 41, 46));
+        webBg.setCornerRadius(12f);
+        webBtn.setBackground(webBg);
+        LinearLayout.LayoutParams lpWeb = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+        lpWeb.setMargins(0, 0, 6, 0);
+        webBtn.setLayoutParams(lpWeb);
+        rowButtons.addView(webBtn);
+
+        Button closeBtn = new Button(this);
+        closeBtn.setText("CLOSE");
+        closeBtn.setTextColor(Color.WHITE);
+        closeBtn.setTypeface(font);
+        GradientDrawable clsBg = new GradientDrawable();
+        clsBg.setColor(Color.rgb(60, 70, 90));
+        clsBg.setCornerRadius(12f);
+        closeBtn.setBackground(clsBg);
+        LinearLayout.LayoutParams lpCls = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+        lpCls.setMargins(6, 0, 0, 0);
+        closeBtn.setLayoutParams(lpCls);
+        rowButtons.addView(closeBtn);
+
+        layout.addView(rowButtons);
+
+        scrollView.addView(layout);
+        builder.setView(scrollView);
+
+        AlertDialog updateDialog = builder.create();
+        if (updateDialog.getWindow() != null) {
+            updateDialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
+        }
+        updateDialog.show();
+
+        final File[] downloadedApk = new File[1];
+
+        actionBtn.setOnClickListener(v -> {
+            if (downloadedApk[0] != null && downloadedApk[0].exists()) {
+                appUpdater.installApk(MainActivity.this, downloadedApk[0]);
+                return;
+            }
+
+            actionBtn.setEnabled(false);
+            actionBtn.setText("DOWNLOADING...");
+            progressContainer.setVisibility(View.VISIBLE);
+
+            appUpdater.downloadUpdate(info.downloadUrl, new AppUpdater.DownloadProgressCallback() {
+                @Override
+                public void onProgress(int progressPercent, long downloadedBytes, long totalBytes, float speedMBs) {
+                    progressBar.setProgress(progressPercent);
+                    double curMB = downloadedBytes / (1024.0 * 1024.0);
+                    double totMB = totalBytes / (1024.0 * 1024.0);
+                    String statsStr = String.format(java.util.Locale.US,
+                            "%d%% • %.1f MB / %.1f MB • %.1f MB/s",
+                            progressPercent, curMB, totMB, speedMBs);
+                    progressStats.setText(statsStr);
+                }
+
+                @Override
+                public void onComplete(File apkFile) {
+                    downloadedApk[0] = apkFile;
+                    actionBtn.setEnabled(true);
+                    actionBtn.setText("PACKAGE READY - INSTALL NOW");
+                    GradientDrawable instBg = new GradientDrawable();
+                    instBg.setColor(Color.rgb(46, 204, 113));
+                    instBg.setCornerRadius(12f);
+                    actionBtn.setBackground(instBg);
+
+                    progressLabel.setText("✅ Download verified and complete!");
+                    progressLabel.setTextColor(Color.rgb(46, 204, 113));
+                    progressBar.setProgress(100);
+
+                    Toast.makeText(MainActivity.this, "Download complete! Opening Android installer...", Toast.LENGTH_SHORT).show();
+                    appUpdater.installApk(MainActivity.this, apkFile);
+                }
+
+                @Override
+                public void onError(String error) {
+                    actionBtn.setEnabled(true);
+                    actionBtn.setText("RETRY DOWNLOAD");
+                    progressLabel.setText("❌ " + error);
+                    progressLabel.setTextColor(Color.rgb(255, 80, 80));
+                    Toast.makeText(MainActivity.this, "Download error: " + error, Toast.LENGTH_LONG).show();
+                }
+            });
+        });
+
+        webBtn.setOnClickListener(v -> {
+            openUrlSafely(info.htmlUrl);
+        });
+
+        closeBtn.setOnClickListener(v -> updateDialog.dismiss());
+    }
+
+    public void openUrlSafely(String url) {
+        try {
+            Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(intent);
+        } catch (Exception e) {
+            try {
+                Intent chooser = Intent.createChooser(new Intent(Intent.ACTION_VIEW, Uri.parse(url)), "Open with");
+                chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(chooser);
+            } catch (Exception ex) {
+                Toast.makeText(this, "Could not open browser for: " + url, Toast.LENGTH_SHORT).show();
+            }
+        }
+    }
+
+    @Override
+    public void onShowLeaderboardDialog() {
+        runOnUiThread(() -> {
+            AudioManager audioMgr = gameView.getAudioManager();
+            ScoreManager scoreMgr = gameView.getScoreManager();
+            ActivationManager actMgr = gameView.getActivationManager();
+            Typeface font = getGameFont();
+
+            AlertDialog.Builder builder = new AlertDialog.Builder(this);
+            ScrollView scrollView = new ScrollView(this);
+            LinearLayout layout = new LinearLayout(this);
+            layout.setOrientation(LinearLayout.VERTICAL);
+            layout.setPadding(40, 30, 40, 30);
+
+            GradientDrawable bg = new GradientDrawable();
+            bg.setColor(Color.rgb(20, 24, 38));
+            bg.setCornerRadius(24f);
+            bg.setStroke(3, Color.rgb(243, 156, 18));
+            layout.setBackground(bg);
+
+            // Title
+            TextView title = new TextView(this);
+            title.setText("🏆 Global Leaderboard");
+            title.setTextSize(20);
+            title.setTypeface(font);
+            title.setTextColor(Color.rgb(255, 215, 0));
+            title.setGravity(Gravity.CENTER);
+            layout.addView(title);
+
+            // Score Submit Card
+            LinearLayout submitCard = new LinearLayout(this);
+            submitCard.setOrientation(LinearLayout.VERTICAL);
+            submitCard.setPadding(20, 16, 20, 16);
+            GradientDrawable subBg = new GradientDrawable();
+            subBg.setColor(Color.rgb(32, 38, 58));
+            subBg.setCornerRadius(14f);
+            submitCard.setBackground(subBg);
+            LinearLayout.LayoutParams lpCard = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+            lpCard.setMargins(0, 16, 0, 16);
+            submitCard.setLayoutParams(lpCard);
+
+            TextView myBest = new TextView(this);
+            myBest.setText("Your Best Score: " + scoreMgr.getHighScore());
+            myBest.setTextSize(14);
+            myBest.setTypeface(font);
+            myBest.setTextColor(Color.rgb(0, 229, 255));
+            submitCard.addView(myBest);
+
+            EditText nameInput = new EditText(this);
+            nameInput.setHint("Your Player Name");
+            nameInput.setText(leaderboardManager.getPlayerName());
+            nameInput.setTextColor(Color.WHITE);
+            nameInput.setHintTextColor(Color.rgb(130, 140, 160));
+            nameInput.setTypeface(font);
+            nameInput.setTextSize(14);
+            nameInput.setSingleLine(true);
+            nameInput.setBackgroundColor(Color.TRANSPARENT);
+            submitCard.addView(nameInput);
+
+            Button submitBtn = new Button(this);
+            submitBtn.setText("SUBMIT MY SCORE");
+            submitBtn.setTextColor(Color.WHITE);
+            submitBtn.setTypeface(font);
+            submitBtn.setTextSize(13);
+            GradientDrawable btnSubBg = new GradientDrawable();
+            btnSubBg.setColor(Color.rgb(46, 204, 113));
+            btnSubBg.setCornerRadius(10f);
+            submitBtn.setBackground(btnSubBg);
+            submitCard.addView(submitBtn);
+
+            layout.addView(submitCard);
+
+            // Top scores list container
+            LinearLayout listContainer = new LinearLayout(this);
+            listContainer.setOrientation(LinearLayout.VERTICAL);
+            layout.addView(listContainer);
+
+            TextView statusText = new TextView(this);
+            statusText.setText("Loading top players from Supabase...");
+            statusText.setTextSize(13);
+            statusText.setTypeface(font);
+            statusText.setTextColor(Color.rgb(200, 210, 230));
+            statusText.setGravity(Gravity.CENTER);
+            statusText.setPadding(0, 10, 0, 10);
+            listContainer.addView(statusText);
+
+            // Action Buttons Row (Refresh & Close)
+            LinearLayout btnRow = new LinearLayout(this);
+            btnRow.setOrientation(LinearLayout.HORIZONTAL);
+            btnRow.setGravity(Gravity.CENTER);
+
+            Button refreshBtn = new Button(this);
+            refreshBtn.setText("🔄 REFRESH");
+            refreshBtn.setTextColor(Color.WHITE);
+            refreshBtn.setTypeface(font);
+            GradientDrawable btnRefBg = new GradientDrawable();
+            btnRefBg.setColor(Color.rgb(52, 152, 219));
+            btnRefBg.setCornerRadius(12f);
+            refreshBtn.setBackground(btnRefBg);
+            LinearLayout.LayoutParams lpRef = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+            lpRef.setMargins(0, 12, 8, 0);
+            refreshBtn.setLayoutParams(lpRef);
+            btnRow.addView(refreshBtn);
+
+            Button closeBtn = new Button(this);
+            closeBtn.setText("CLOSE");
+            closeBtn.setTextColor(Color.WHITE);
+            closeBtn.setTypeface(font);
+            GradientDrawable btnClsBg = new GradientDrawable();
+            btnClsBg.setColor(Color.rgb(60, 70, 90));
+            btnClsBg.setCornerRadius(12f);
+            closeBtn.setBackground(btnClsBg);
+            LinearLayout.LayoutParams lpCls = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+            lpCls.setMargins(8, 12, 0, 0);
+            closeBtn.setLayoutParams(lpCls);
+            btnRow.addView(closeBtn);
+
+            layout.addView(btnRow);
+
+            scrollView.addView(layout);
+            builder.setView(scrollView);
+
+            AlertDialog dialog = builder.create();
+            if (dialog.getWindow() != null) {
+                dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
+            }
+            dialog.show();
+
+            Runnable loadLeaderboard = () -> {
+                statusText.setText("Fetching top scores from Supabase...");
+                statusText.setVisibility(View.VISIBLE);
+                listContainer.removeAllViews();
+                listContainer.addView(statusText);
+
+                leaderboardManager.fetchTopScores(new LeaderboardManager.FetchCallback() {
+                    @Override
+                    public void onSuccess(List<LeaderboardManager.Entry> entries) {
+                        listContainer.removeAllViews();
+                        if (entries.isEmpty()) {
+                            TextView emptyTv = new TextView(MainActivity.this);
+                            emptyTv.setText("No scores recorded yet! Be the first on the board.");
+                            emptyTv.setTextSize(13);
+                            emptyTv.setTypeface(font);
+                            emptyTv.setTextColor(Color.rgb(180, 190, 210));
+                            emptyTv.setGravity(Gravity.CENTER);
+                            emptyTv.setPadding(0, 14, 0, 14);
+                            listContainer.addView(emptyTv);
+                            return;
+                        }
+
+                        for (int i = 0; i < entries.size(); i++) {
+                            LeaderboardManager.Entry e = entries.get(i);
+                            LinearLayout row = new LinearLayout(MainActivity.this);
+                            row.setOrientation(LinearLayout.HORIZONTAL);
+                            row.setPadding(12, 8, 12, 8);
+
+                            String medal = (i == 0) ? "🥇 " : (i == 1) ? "🥈 " : (i == 2) ? "🥉 " : ("#" + (i + 1) + " ");
+                            TextView rankName = new TextView(MainActivity.this);
+                            rankName.setText(medal + e.playerName);
+                            rankName.setTypeface(font);
+                            rankName.setTextSize(14);
+                            rankName.setTextColor((i < 3) ? Color.rgb(255, 215, 0) : Color.WHITE);
+                            LinearLayout.LayoutParams lpName = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+                            rankName.setLayoutParams(lpName);
+                            row.addView(rankName);
+
+                            TextView scoreTv = new TextView(MainActivity.this);
+                            scoreTv.setText(String.valueOf(e.score));
+                            scoreTv.setTypeface(font);
+                            scoreTv.setTextSize(15);
+                            scoreTv.setTextColor(Color.rgb(0, 229, 255));
+                            row.addView(scoreTv);
+
+                            listContainer.addView(row);
+                        }
+                    }
+
+                    @Override
+                    public void onError(String message) {
+                        listContainer.removeAllViews();
+                        TextView errTv = new TextView(MainActivity.this);
+                        errTv.setText("Notice: " + message + "\n(Run SQL schema in Supabase to enable)");
+                        errTv.setTextSize(12);
+                        errTv.setTypeface(font);
+                        errTv.setTextColor(Color.rgb(255, 120, 120));
+                        errTv.setGravity(Gravity.CENTER);
+                        errTv.setPadding(0, 10, 0, 10);
+                        listContainer.addView(errTv);
+                    }
+                });
+            };
+
+            loadLeaderboard.run();
+
+            submitBtn.setOnClickListener(v -> {
+                audioMgr.playClickSound();
+                String pName = nameInput.getText().toString().trim();
+                if (pName.isEmpty()) pName = "Player";
+                leaderboardManager.setPlayerName(pName);
+
+                int score = scoreMgr.getHighScore();
+                String head = actMgr.getActiveHead();
+
+                statusText.setText("Submitting score to Supabase...");
+                leaderboardManager.submitScore(pName, score, head, new LeaderboardManager.SubmitCallback() {
+                    @Override
+                    public void onSuccess() {
+                        Toast.makeText(MainActivity.this, "🎉 Score submitted to Supabase!", Toast.LENGTH_SHORT).show();
+                        loadLeaderboard.run();
+                    }
+
+                    @Override
+                    public void onError(String message) {
+                        Toast.makeText(MainActivity.this, "Submit failed: " + message, Toast.LENGTH_SHORT).show();
+                    }
+                });
+            });
+
+            refreshBtn.setOnClickListener(v -> {
+                audioMgr.playClickSound();
+                loadLeaderboard.run();
             });
 
             closeBtn.setOnClickListener(v -> {
@@ -386,29 +996,26 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
 
             // Creator Subheading
             TextView subTitle = new TextView(this);
-            subTitle.setText("Game & Assets Made by Atif\nDigital Creator / Coder / Visual Storyteller\n★ Atif Arman (Exotic Atif) ★");
+            subTitle.setText("★ Atif Arman (Exotic Atif) ★\nDigital Creator / Developer / Visual Storyteller");
             subTitle.setTextSize(14);
             subTitle.setTypeface(font);
             subTitle.setTextColor(Color.rgb(0, 229, 255));
             subTitle.setGravity(Gravity.CENTER);
-            subTitle.setPadding(0, 10, 0, 18);
+            subTitle.setPadding(0, 10, 0, 16);
             layout.addView(subTitle);
 
-            // Full Bio
-            String bioText = "Welcome to the official portfolio of Exotic Atif — a digital creator and web developer also known as Atif Arman. Exotic Atif's portfolio showcases creative work, coding projects, and visual storytelling.\n\n" +
-                    "Exotic Atif is a teenage creator obsessed with building things that combine logic, design, and emotion. The core of Exotic Atif's portfolio is coding — where ideas become useful projects through clean structure and continuous experiments.\n\n" +
-                    "As a digital creator passionate about coding, photography, videography, and creative content, Exotic Atif explores the intersection of technology and creativity. This journey is fueled by relentless curiosity for new tools, platforms, and techniques that push boundaries and express a unique perspective.\n\n" +
-                    "Coding is Exotic Atif's creative playground for problem-solving and innovation. From developing websites to experimenting with new programming languages, every Exotic Atif project transforms ideas into functional, user-friendly creations. Photography and videography complement Exotic Atif's creative work, freezing moments and shaping visual stories that resonate.\n\n" +
-                    "Exotic Atif shares work and creative progress across social platforms to connect with like-minded creators. For collaborations and direct communication, email is always open.\n\n" +
-                    "Typography: DotGothic16 by Fontworks (Google Fonts OFL)\n" +
-                    "Version 1.1 (Dynamic High-FPS Edition)";
+            // Summarized Concise Bio
+            String bioText = "Urukku Manush is built by Exotic Atif (Atif Arman) — a digital creator and developer combining logic, design, and continuous experiments.\n\n" +
+                    "• Coding, Art & Audio Design: Atif Arman\n" +
+                    "• Typography: DotGothic16 by Fontworks (Google Fonts OFL)\n" +
+                    "• Edition: Version 2.0.0 (Dynamic High-FPS Edition)";
 
             TextView content = new TextView(this);
             content.setText(bioText);
             content.setTextSize(13);
             content.setTypeface(font);
             content.setTextColor(Color.rgb(215, 228, 245));
-            content.setPadding(0, 0, 0, 20);
+            content.setPadding(0, 0, 0, 18);
             layout.addView(content);
 
             // Social Buttons Section Header
@@ -418,18 +1025,13 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
             socialsHeader.setTypeface(font);
             socialsHeader.setTextColor(Color.rgb(255, 215, 0));
             socialsHeader.setGravity(Gravity.CENTER);
-            socialsHeader.setPadding(0, 10, 0, 14);
+            socialsHeader.setPadding(0, 8, 0, 12);
             layout.addView(socialsHeader);
 
-            // Social links
+            // Social links with distinct brand styles
             addSocialButton(layout, "📸 Instagram (@exotic_atif)", "https://www.instagram.com/exotic_atif", Color.rgb(225, 48, 108), audioMgr, font);
-            addSocialButton(layout, "📸 Instagram (@exotic.atif)", "https://www.instagram.com/exotic.atif", Color.rgb(193, 53, 132), audioMgr, font);
             addSocialButton(layout, "🎬 YouTube (@exotic_atif)", "https://www.youtube.com/@exotic_atif", Color.rgb(230, 33, 23), audioMgr, font);
             addSocialButton(layout, "✖️ X / Twitter (@exotic_atif)", "https://x.com/exotic_atif", Color.rgb(40, 45, 55), audioMgr, font);
-            addSocialButton(layout, "🧵 Threads (@exotic_atif)", "https://www.threads.net/@exotic_atif", Color.rgb(30, 30, 30), audioMgr, font);
-            addSocialButton(layout, "📘 Facebook (ExoticAtif)", "https://www.facebook.com/ExoticAtif", Color.rgb(24, 119, 242), audioMgr, font);
-            addSocialButton(layout, "👻 Snapchat (@exotic_atif)", "https://www.snapchat.com/add/exotic_atif", Color.rgb(255, 252, 0), audioMgr, font, Color.BLACK);
-            addSocialButton(layout, "✈️ Telegram (@exotic_atif)", "https://t.me/exotic_atif", Color.rgb(0, 136, 204), audioMgr, font);
             addSocialButton(layout, "🐙 GitHub (@exotic-atif)", "https://github.com/exotic-atif", Color.rgb(36, 41, 46), audioMgr, font);
 
             // Close button
@@ -441,10 +1043,10 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
             btnCloseBg.setColor(Color.rgb(155, 89, 182));
             btnCloseBg.setCornerRadius(14f);
             closeBtn.setBackground(btnCloseBg);
-            closeBtn.setPadding(0, 20, 0, 20);
+            closeBtn.setPadding(0, 18, 0, 18);
             LinearLayout.LayoutParams lpClose = new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-            lpClose.setMargins(0, 20, 0, 10);
+            lpClose.setMargins(0, 18, 0, 10);
             closeBtn.setLayoutParams(lpClose);
             layout.addView(closeBtn);
 
@@ -465,13 +1067,9 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
     }
 
     private void addSocialButton(LinearLayout layout, String label, String url, int bgColor, AudioManager audioMgr, Typeface font) {
-        addSocialButton(layout, label, url, bgColor, audioMgr, font, Color.WHITE);
-    }
-
-    private void addSocialButton(LinearLayout layout, String label, String url, int bgColor, AudioManager audioMgr, Typeface font, int textColor) {
         Button btn = new Button(this);
         btn.setText(label);
-        btn.setTextColor(textColor);
+        btn.setTextColor(Color.WHITE);
         btn.setTypeface(font);
         btn.setTextSize(13);
 
@@ -479,21 +1077,16 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
         bg.setColor(bgColor);
         bg.setCornerRadius(12f);
         btn.setBackground(bg);
-        btn.setPadding(20, 14, 20, 14);
+        btn.setPadding(20, 12, 20, 12);
 
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        lp.setMargins(0, 6, 0, 6);
+        lp.setMargins(0, 5, 0, 5);
         btn.setLayoutParams(lp);
 
         btn.setOnClickListener(v -> {
             audioMgr.playClickSound();
-            try {
-                Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
-                startActivity(intent);
-            } catch (Exception e) {
-                Toast.makeText(this, "Opening " + url, Toast.LENGTH_SHORT).show();
-            }
+            openUrlSafely(url);
         });
 
         layout.addView(btn);

@@ -140,6 +140,9 @@ public class AudioManager {
         }
     }
 
+    private int currentLoseStreamId = 0;
+    private String lastPlayedBgm = null;
+
     public void playRandomPlaySound() {
         if (!sfxEnabled || playSoundIds.isEmpty()) return;
         int soundId = playSoundIds.get(random.nextInt(playSoundIds.size()));
@@ -154,8 +157,21 @@ public class AudioManager {
 
     public void playLoseSound() {
         if (!sfxEnabled || loseSoundIds.isEmpty()) return;
+        stopLoseSound();
         int soundId = loseSoundIds.get(random.nextInt(loseSoundIds.size()));
-        soundPool.play(soundId, 1.0f, 1.0f, 2, 0, 1.0f);
+        if (soundPool != null) {
+            currentLoseStreamId = soundPool.play(soundId, 1.0f, 1.0f, 2, 0, 1.0f);
+        }
+    }
+
+    public void stopLoseSound() {
+        if (currentLoseStreamId != 0 && soundPool != null) {
+            try {
+                soundPool.stop(currentLoseStreamId);
+            } catch (Exception ignored) {
+            }
+            currentLoseStreamId = 0;
+        }
     }
 
     public void playClickSound() {
@@ -172,9 +188,21 @@ public class AudioManager {
 
     public void startBgm() {
         if (!bgmEnabled || bgmFiles.isEmpty()) return;
+        playRandomBgmTrack();
+    }
+
+    private void playRandomBgmTrack() {
         stopBgm();
+        if (bgmFiles.isEmpty()) return;
+
+        List<String> pool = new ArrayList<>(bgmFiles);
+        if (pool.size() > 1 && lastPlayedBgm != null) {
+            pool.remove(lastPlayedBgm);
+        }
+        String chosen = pool.get(random.nextInt(pool.size()));
+        lastPlayedBgm = chosen;
+
         try {
-            String chosen = bgmFiles.get(random.nextInt(bgmFiles.size()));
             bgmPlayer = new MediaPlayer();
             AssetFileDescriptor afd = context.getAssets().openFd(chosen);
             bgmPlayer.setDataSource(afd.getFileDescriptor(), afd.getStartOffset(), afd.getLength());
@@ -183,12 +211,17 @@ public class AudioManager {
                     .setUsage(AudioAttributes.USAGE_GAME)
                     .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
                     .build());
-            bgmPlayer.setLooping(true);
             bgmPlayer.setVolume(bgmVolume, bgmVolume);
+            bgmPlayer.setLooping(false);
+            bgmPlayer.setOnCompletionListener(mp -> {
+                if (bgmEnabled) {
+                    playRandomBgmTrack();
+                }
+            });
             bgmPlayer.prepare();
             bgmPlayer.start();
         } catch (Exception e) {
-            Log.e(TAG, "Error starting BGM", e);
+            Log.e(TAG, "Error playing BGM track " + chosen, e);
         }
     }
 
@@ -215,11 +248,40 @@ public class AudioManager {
     public void resumeBgm() {
         if (bgmPlayer != null && bgmEnabled && !bgmPlayer.isPlaying()) {
             bgmPlayer.start();
+        } else if (bgmPlayer == null && bgmEnabled && !bgmFiles.isEmpty()) {
+            startBgm();
+        }
+    }
+
+    public void pauseAll() {
+        pauseBgm();
+        stopLoseSound();
+        if (introPlayer != null && introPlayer.isPlaying()) {
+            introPlayer.pause();
+        }
+        if (soundPool != null) {
+            soundPool.autoPause();
+        }
+    }
+
+    public void resumeAll(boolean inGame) {
+        if (soundPool != null) {
+            soundPool.autoResume();
+        }
+        if (inGame) {
+            resumeBgm();
+        } else {
+            if (introPlayer != null && bgmEnabled && !introPlayer.isPlaying()) {
+                introPlayer.start();
+            }
         }
     }
 
     public void setSfxEnabled(boolean enabled) {
         this.sfxEnabled = enabled;
+        if (!enabled) {
+            stopLoseSound();
+        }
     }
 
     public boolean isSfxEnabled() {
@@ -243,6 +305,7 @@ public class AudioManager {
     public void release() {
         stopIntroMusic();
         stopBgm();
+        stopLoseSound();
         if (soundPool != null) {
             soundPool.release();
             soundPool = null;
