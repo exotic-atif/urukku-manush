@@ -40,6 +40,14 @@ public class ScoreManager {
         return false;
     }
 
+    public void setHighScore(int score) {
+        if (score >= 0) {
+            this.highScore = score;
+            prefs.edit().putInt(KEY_HIGH_SCORE, highScore).apply();
+            syncExternalBackup();
+        }
+    }
+
     public void resetHighScore() {
         highScore = 0;
         prefs.edit().putInt(KEY_HIGH_SCORE, 0).apply();

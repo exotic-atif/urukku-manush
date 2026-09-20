@@ -4,6 +4,7 @@ import android.app.AlertDialog;
 import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Build;
@@ -16,6 +17,7 @@ import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
+import android.util.Log;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.ScrollView;
@@ -23,6 +25,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.ContextCompat;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
@@ -56,6 +59,44 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
         gameView = new GameView(this);
         gameView.setActionListener(this);
         setContentView(gameView);
+
+        // Background multi-device highscore sync on launch if already activated
+        ActivationManager actMgr = new ActivationManager(this);
+        ScoreManager scoreMgr = new ScoreManager(this);
+        if (actMgr.isActivated()) {
+            leaderboardManager.syncScoresWithServer(
+                    scoreMgr.getHighScore(),
+                    actMgr.getActiveHash(),
+                    actMgr.getActiveHeadIndex(),
+                    actMgr.getActiveHead(),
+                    syncedScore -> {
+                        if (syncedScore > scoreMgr.getHighScore()) {
+                            scoreMgr.setHighScore(syncedScore);
+                        }
+                    }
+            );
+        }
+    }
+
+    @Override
+    public void onNewHighScore(int score) {
+        ActivationManager actMgr = new ActivationManager(this);
+        leaderboardManager.autoSyncHighScore(score, actMgr.getActiveHash(), actMgr.getActiveHeadIndex(), actMgr.getActiveHead());
+    }
+
+    private void setButtonVectorIcon(Button btn, int resId, int color) {
+        try {
+            Drawable icon = ContextCompat.getDrawable(this, resId);
+            if (icon != null) {
+                icon = icon.mutate();
+                icon.setTint(color);
+                int size = (int) (20 * getResources().getDisplayMetrics().density);
+                icon.setBounds(0, 0, size, size);
+                btn.setCompoundDrawables(icon, null, null, null);
+                btn.setCompoundDrawablePadding((int) (10 * getResources().getDisplayMetrics().density));
+            }
+        } catch (Exception ignored) {
+        }
     }
 
     private void ensureExternalDataDirectory() {
@@ -158,8 +199,28 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
     }
 
     @Override
+    protected void onStop() {
+        super.onStop();
+        try {
+            if (gameView != null && gameView.getActivationManager() != null) {
+                gameView.getActivationManager().applyPendingLauncherIconUpdate();
+            } else {
+                new ActivationManager(this).applyPendingLauncherIconUpdate();
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error applying pending launcher icon update on stop", e);
+        }
+    }
+
+    @Override
     protected void onDestroy() {
         super.onDestroy();
+        try {
+            if (gameView != null && gameView.getActivationManager() != null) {
+                gameView.getActivationManager().applyPendingLauncherIconUpdate();
+            }
+        } catch (Exception ignored) {
+        }
         if (gameView != null && gameView.getAudioManager() != null) {
             gameView.getAudioManager().release();
         }
@@ -264,14 +325,30 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
                 audioMgr.playClickSound();
                 String code = input.getText().toString().trim();
                 if (actMgr.activate(code)) {
-                    Toast.makeText(this, "🎉 Activated! Welcome to Urukku Manush!", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, "Activated! Welcome to Urukku Manush!", Toast.LENGTH_SHORT).show();
                     gameView.reloadPlayerHead();
                     dialog.dismiss();
+
+                    // Multi-device sync on activation: local < server = pull, local > server = push
+                    ScoreManager scoreMgr = new ScoreManager(this);
+                    leaderboardManager.syncScoresWithServer(
+                            scoreMgr.getHighScore(),
+                            actMgr.getActiveHash(),
+                            actMgr.getActiveHeadIndex(),
+                            actMgr.getActiveHead(),
+                            syncedScore -> {
+                                if (syncedScore > scoreMgr.getHighScore()) {
+                                    scoreMgr.setHighScore(syncedScore);
+                                    Toast.makeText(this, "Restored high score: " + syncedScore, Toast.LENGTH_SHORT).show();
+                                }
+                            }
+                    );
+
                     if (onActivated != null) {
                         onActivated.run();
                     }
                 } else {
-                    errorText.setText("❌ Invalid activation code! Try again.");
+                    errorText.setText("Invalid activation code! Try again.");
                     errorText.setVisibility(View.VISIBLE);
                 }
             });
@@ -297,7 +374,7 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
             layout.setBackground(bg);
 
             TextView title = new TextView(this);
-            title.setText("⚙️ Game Settings");
+            title.setText("Game Settings");
             title.setTextSize(22);
             title.setTypeface(font);
             title.setTextColor(Color.rgb(0, 229, 255));
@@ -341,11 +418,12 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
             });
             layout.addView(cbMuteBgm);
 
-            // Leaderboard button
+            // Leaderboard button with real SVG trophy icon
             Button leaderboardBtn = new Button(this);
-            leaderboardBtn.setText("🏆 LEADERBOARD");
+            leaderboardBtn.setText("LEADERBOARD");
             leaderboardBtn.setTextColor(Color.WHITE);
             leaderboardBtn.setTypeface(font);
+            setButtonVectorIcon(leaderboardBtn, R.drawable.ic_trophy, Color.WHITE);
             GradientDrawable btnLeadBg = new GradientDrawable();
             btnLeadBg.setColor(Color.rgb(243, 156, 18));
             btnLeadBg.setCornerRadius(12f);
@@ -356,11 +434,12 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
             leaderboardBtn.setLayoutParams(lpLead);
             layout.addView(leaderboardBtn);
 
-            // In-App Check Updates button
+            // In-App Check Updates button with real SVG refresh icon
             Button updateBtn = new Button(this);
-            updateBtn.setText("🔄 CHECK FOR UPDATES");
+            updateBtn.setText("CHECK FOR UPDATES");
             updateBtn.setTextColor(Color.WHITE);
             updateBtn.setTypeface(font);
+            setButtonVectorIcon(updateBtn, R.drawable.ic_refresh, Color.WHITE);
             GradientDrawable btnUpBg = new GradientDrawable();
             btnUpBg.setColor(Color.rgb(46, 204, 113));
             btnUpBg.setCornerRadius(12f);
@@ -468,9 +547,10 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
                 btnRow.setPadding(0, 16, 0, 0);
 
                 Button retryBtn = new Button(MainActivity.this);
-                retryBtn.setText("🔄 RETRY");
+                retryBtn.setText("RETRY");
                 retryBtn.setTypeface(font);
                 retryBtn.setTextColor(Color.WHITE);
+                setButtonVectorIcon(retryBtn, R.drawable.ic_refresh, Color.WHITE);
                 GradientDrawable retBg = new GradientDrawable();
                 retBg.setColor(Color.rgb(46, 204, 113));
                 retBg.setCornerRadius(12f);
@@ -485,9 +565,10 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
                 btnRow.addView(retryBtn);
 
                 Button webBtn = new Button(MainActivity.this);
-                webBtn.setText("🌐 BROWSER");
+                webBtn.setText("BROWSER");
                 webBtn.setTypeface(font);
                 webBtn.setTextColor(Color.WHITE);
+                setButtonVectorIcon(webBtn, R.drawable.ic_globe, Color.WHITE);
                 GradientDrawable wBg = new GradientDrawable();
                 wBg.setColor(Color.rgb(52, 152, 219));
                 wBg.setCornerRadius(12f);
@@ -798,58 +879,54 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
             bg.setStroke(3, Color.rgb(243, 156, 18));
             layout.setBackground(bg);
 
-            // Title
+            // Header Title
             TextView title = new TextView(this);
-            title.setText("🏆 Global Leaderboard");
+            title.setText("Global Leaderboard");
             title.setTextSize(20);
             title.setTypeface(font);
             title.setTextColor(Color.rgb(255, 215, 0));
             title.setGravity(Gravity.CENTER);
             layout.addView(title);
 
-            // Score Submit Card
-            LinearLayout submitCard = new LinearLayout(this);
-            submitCard.setOrientation(LinearLayout.VERTICAL);
-            submitCard.setPadding(20, 16, 20, 16);
-            GradientDrawable subBg = new GradientDrawable();
-            subBg.setColor(Color.rgb(32, 38, 58));
-            subBg.setCornerRadius(14f);
-            submitCard.setBackground(subBg);
-            LinearLayout.LayoutParams lpCard = new LinearLayout.LayoutParams(
+            // Player Profile Status Card (No submit button - sync is automatic)
+            LinearLayout profileCard = new LinearLayout(this);
+            profileCard.setOrientation(LinearLayout.VERTICAL);
+            profileCard.setPadding(20, 14, 20, 14);
+            GradientDrawable profBg = new GradientDrawable();
+            profBg.setColor(Color.rgb(30, 35, 54));
+            profBg.setCornerRadius(14f);
+            profileCard.setBackground(profBg);
+            LinearLayout.LayoutParams lpProf = new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-            lpCard.setMargins(0, 16, 0, 16);
-            submitCard.setLayoutParams(lpCard);
+            lpProf.setMargins(0, 14, 0, 14);
+            profileCard.setLayoutParams(lpProf);
+
+            String playerName = leaderboardManager.getPlayerName(actMgr.getActiveHeadIndex());
+            TextView tvPlayer = new TextView(this);
+            tvPlayer.setText("Player: " + playerName);
+            tvPlayer.setTextSize(14);
+            tvPlayer.setTypeface(font);
+            tvPlayer.setTextColor(Color.WHITE);
+            profileCard.addView(tvPlayer);
 
             TextView myBest = new TextView(this);
-            myBest.setText("Your Best Score: " + scoreMgr.getHighScore());
-            myBest.setTextSize(14);
+            myBest.setText("Your High Score: " + scoreMgr.getHighScore());
+            myBest.setTextSize(13);
             myBest.setTypeface(font);
             myBest.setTextColor(Color.rgb(0, 229, 255));
-            submitCard.addView(myBest);
+            myBest.setPadding(0, 4, 0, 0);
+            profileCard.addView(myBest);
 
-            EditText nameInput = new EditText(this);
-            nameInput.setHint("Your Player Name");
-            nameInput.setText(leaderboardManager.getPlayerName());
-            nameInput.setTextColor(Color.WHITE);
-            nameInput.setHintTextColor(Color.rgb(130, 140, 160));
-            nameInput.setTypeface(font);
-            nameInput.setTextSize(14);
-            nameInput.setSingleLine(true);
-            nameInput.setBackgroundColor(Color.TRANSPARENT);
-            submitCard.addView(nameInput);
+            layout.addView(profileCard);
 
-            Button submitBtn = new Button(this);
-            submitBtn.setText("SUBMIT MY SCORE");
-            submitBtn.setTextColor(Color.WHITE);
-            submitBtn.setTypeface(font);
-            submitBtn.setTextSize(13);
-            GradientDrawable btnSubBg = new GradientDrawable();
-            btnSubBg.setColor(Color.rgb(46, 204, 113));
-            btnSubBg.setCornerRadius(10f);
-            submitBtn.setBackground(btnSubBg);
-            submitCard.addView(submitBtn);
-
-            layout.addView(submitCard);
+            // Cache / sync status indicator
+            TextView cacheStatus = new TextView(this);
+            cacheStatus.setTextSize(11);
+            cacheStatus.setTypeface(font);
+            cacheStatus.setTextColor(Color.rgb(243, 156, 18));
+            cacheStatus.setGravity(Gravity.CENTER);
+            cacheStatus.setVisibility(View.GONE);
+            layout.addView(cacheStatus);
 
             // Top scores list container
             LinearLayout listContainer = new LinearLayout(this);
@@ -857,12 +934,12 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
             layout.addView(listContainer);
 
             TextView statusText = new TextView(this);
-            statusText.setText("Loading top players from Supabase...");
+            statusText.setText("Loading top players...");
             statusText.setTextSize(13);
             statusText.setTypeface(font);
             statusText.setTextColor(Color.rgb(200, 210, 230));
             statusText.setGravity(Gravity.CENTER);
-            statusText.setPadding(0, 10, 0, 10);
+            statusText.setPadding(0, 14, 0, 14);
             listContainer.addView(statusText);
 
             // Action Buttons Row (Refresh & Close)
@@ -871,15 +948,16 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
             btnRow.setGravity(Gravity.CENTER);
 
             Button refreshBtn = new Button(this);
-            refreshBtn.setText("🔄 REFRESH");
+            refreshBtn.setText("REFRESH");
             refreshBtn.setTextColor(Color.WHITE);
             refreshBtn.setTypeface(font);
+            setButtonVectorIcon(refreshBtn, R.drawable.ic_refresh, Color.WHITE);
             GradientDrawable btnRefBg = new GradientDrawable();
             btnRefBg.setColor(Color.rgb(52, 152, 219));
             btnRefBg.setCornerRadius(12f);
             refreshBtn.setBackground(btnRefBg);
             LinearLayout.LayoutParams lpRef = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
-            lpRef.setMargins(0, 12, 8, 0);
+            lpRef.setMargins(0, 14, 8, 0);
             refreshBtn.setLayoutParams(lpRef);
             btnRow.addView(refreshBtn);
 
@@ -892,7 +970,7 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
             btnClsBg.setCornerRadius(12f);
             closeBtn.setBackground(btnClsBg);
             LinearLayout.LayoutParams lpCls = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
-            lpCls.setMargins(8, 12, 0, 0);
+            lpCls.setMargins(8, 14, 0, 0);
             closeBtn.setLayoutParams(lpCls);
             btnRow.addView(closeBtn);
 
@@ -908,18 +986,20 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
             dialog.show();
 
             Runnable loadLeaderboard = () -> {
-                statusText.setText("Fetching top scores from Supabase...");
-                statusText.setVisibility(View.VISIBLE);
-                listContainer.removeAllViews();
-                listContainer.addView(statusText);
-
-                leaderboardManager.fetchTopScores(new LeaderboardManager.FetchCallback() {
+                leaderboardManager.fetchLeaderboard(new LeaderboardManager.FetchCallback() {
                     @Override
-                    public void onSuccess(List<LeaderboardManager.Entry> entries) {
+                    public void onSuccess(List<LeaderboardManager.Entry> entries, boolean isFromCache) {
                         listContainer.removeAllViews();
+                        if (isFromCache) {
+                            cacheStatus.setText("[OFFLINE CACHE]");
+                            cacheStatus.setVisibility(View.VISIBLE);
+                        } else {
+                            cacheStatus.setVisibility(View.GONE);
+                        }
+
                         if (entries.isEmpty()) {
                             TextView emptyTv = new TextView(MainActivity.this);
-                            emptyTv.setText("No scores recorded yet! Be the first on the board.");
+                            emptyTv.setText("No scores recorded yet. Play to set a record!");
                             emptyTv.setTextSize(13);
                             emptyTv.setTypeface(font);
                             emptyTv.setTextColor(Color.rgb(180, 190, 210));
@@ -935,9 +1015,9 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
                             row.setOrientation(LinearLayout.HORIZONTAL);
                             row.setPadding(12, 8, 12, 8);
 
-                            String medal = (i == 0) ? "🥇 " : (i == 1) ? "🥈 " : (i == 2) ? "🥉 " : ("#" + (i + 1) + " ");
+                            String rankLabel = (i == 0) ? "#1 [GOLD] " : (i == 1) ? "#2 [SILVER] " : (i == 2) ? "#3 [BRONZE] " : ("#" + (i + 1) + " ");
                             TextView rankName = new TextView(MainActivity.this);
-                            rankName.setText(medal + e.playerName);
+                            rankName.setText(rankLabel + e.name);
                             rankName.setTypeface(font);
                             rankName.setTextSize(14);
                             rankName.setTextColor((i < 3) ? Color.rgb(255, 215, 0) : Color.WHITE);
@@ -960,7 +1040,7 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
                     public void onError(String message) {
                         listContainer.removeAllViews();
                         TextView errTv = new TextView(MainActivity.this);
-                        errTv.setText("Notice: " + message + "\n(Run SQL schema in Supabase to enable)");
+                        errTv.setText("Notice: " + message);
                         errTv.setTextSize(12);
                         errTv.setTypeface(font);
                         errTv.setTextColor(Color.rgb(255, 120, 120));
@@ -971,35 +1051,29 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
                 });
             };
 
+            // First load from live/cache
             loadLeaderboard.run();
 
-            submitBtn.setOnClickListener(v -> {
-                audioMgr.playClickSound();
-                String pName = nameInput.getText().toString().trim();
-                if (pName.isEmpty()) pName = "Player";
-                leaderboardManager.setPlayerName(pName);
-
-                int score = scoreMgr.getHighScore();
-                String head = actMgr.getActiveHead();
-
-                statusText.setText("Submitting score to Supabase...");
-                leaderboardManager.submitScore(pName, score, head, new LeaderboardManager.SubmitCallback() {
-                    @Override
-                    public void onSuccess() {
-                        Toast.makeText(MainActivity.this, "🎉 Score submitted to Supabase!", Toast.LENGTH_SHORT).show();
-                        loadLeaderboard.run();
-                    }
-
-                    @Override
-                    public void onError(String message) {
-                        Toast.makeText(MainActivity.this, "Submit failed: " + message, Toast.LENGTH_SHORT).show();
-                    }
-                });
-            });
-
+            // Refresh action: sync local vs server highscore then reload
             refreshBtn.setOnClickListener(v -> {
                 audioMgr.playClickSound();
-                loadLeaderboard.run();
+                statusText.setText("Syncing scores with server...");
+                listContainer.removeAllViews();
+                listContainer.addView(statusText);
+
+                leaderboardManager.syncScoresWithServer(
+                        scoreMgr.getHighScore(),
+                        actMgr.getActiveHash(),
+                        actMgr.getActiveHeadIndex(),
+                        actMgr.getActiveHead(),
+                        syncedScore -> {
+                            if (syncedScore > scoreMgr.getHighScore()) {
+                                scoreMgr.setHighScore(syncedScore);
+                                myBest.setText("Your High Score: " + syncedScore);
+                            }
+                            loadLeaderboard.run();
+                        }
+                );
             });
 
             closeBtn.setOnClickListener(v -> {
@@ -1019,7 +1093,7 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
             ScrollView scrollView = new ScrollView(this);
             LinearLayout layout = new LinearLayout(this);
             layout.setOrientation(LinearLayout.VERTICAL);
-            layout.setPadding(50, 40, 50, 40);
+            layout.setPadding(40, 30, 40, 30);
 
             GradientDrawable bg = new GradientDrawable();
             bg.setColor(Color.rgb(20, 24, 38));
@@ -1029,7 +1103,7 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
 
             // Header Title
             TextView title = new TextView(this);
-            title.setText("🌟 Urukku Manush - Credits");
+            title.setText("Credits & Creator");
             title.setTextSize(22);
             title.setTypeface(font);
             title.setTextColor(Color.rgb(255, 215, 0));
@@ -1038,43 +1112,58 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
 
             // Creator Subheading
             TextView subTitle = new TextView(this);
-            subTitle.setText("★ Atif Arman (Exotic Atif) ★\nDigital Creator / Developer / Visual Storyteller");
-            subTitle.setTextSize(14);
+            subTitle.setText("Atif Arman (Exotic Atif) • Creator & Developer");
+            subTitle.setTextSize(13);
             subTitle.setTypeface(font);
             subTitle.setTextColor(Color.rgb(0, 229, 255));
             subTitle.setGravity(Gravity.CENTER);
-            subTitle.setPadding(0, 10, 0, 16);
+            subTitle.setPadding(0, 8, 0, 14);
             layout.addView(subTitle);
 
-            // Summarized Concise Bio
-            String bioText = "Urukku Manush is built by Exotic Atif (Atif Arman) — a digital creator and developer combining logic, design, and continuous experiments.\n\n" +
-                    "• Coding, Art & Audio Design: Atif Arman\n" +
+            // Summarized Concise Specs
+            String bioText = "• Coding, Art & Audio Design: Atif Arman\n" +
                     "• Typography: DotGothic16 by Fontworks (Google Fonts OFL)\n" +
-                    "• Edition: Version 2.0.0 (Dynamic High-FPS Edition)";
+                    "• Edition: Version 2.0.0 (High-FPS Dynamic Edition)";
 
             TextView content = new TextView(this);
             content.setText(bioText);
-            content.setTextSize(13);
+            content.setTextSize(12);
             content.setTypeface(font);
             content.setTextColor(Color.rgb(215, 228, 245));
-            content.setPadding(0, 0, 0, 18);
+            content.setPadding(0, 0, 0, 14);
             layout.addView(content);
 
             // Social Buttons Section Header
             TextView socialsHeader = new TextView(this);
-            socialsHeader.setText("🌐 CONNECT WITH EXOTIC ATIF");
-            socialsHeader.setTextSize(15);
+            socialsHeader.setText("CONNECT WITH EXOTIC ATIF");
+            socialsHeader.setTextSize(14);
             socialsHeader.setTypeface(font);
             socialsHeader.setTextColor(Color.rgb(255, 215, 0));
             socialsHeader.setGravity(Gravity.CENTER);
-            socialsHeader.setPadding(0, 8, 0, 12);
+            socialsHeader.setPadding(0, 6, 0, 10);
             layout.addView(socialsHeader);
 
-            // Social links with distinct brand styles
-            addSocialButton(layout, "📸 Instagram (@exotic_atif)", "https://www.instagram.com/exotic_atif", Color.rgb(225, 48, 108), audioMgr, font);
-            addSocialButton(layout, "🎬 YouTube (@exotic_atif)", "https://www.youtube.com/@exotic_atif", Color.rgb(230, 33, 23), audioMgr, font);
-            addSocialButton(layout, "✖️ X / Twitter (@exotic_atif)", "https://x.com/exotic_atif", Color.rgb(40, 45, 55), audioMgr, font);
-            addSocialButton(layout, "🐙 GitHub (@exotic-atif)", "https://github.com/exotic-atif", Color.rgb(36, 41, 46), audioMgr, font);
+            // Row 1: Instagram, YouTube, Snapchat
+            LinearLayout row1 = new LinearLayout(this);
+            row1.setOrientation(LinearLayout.HORIZONTAL);
+            addSocialButton(row1, R.drawable.ic_instagram, "Instagram", "https://www.instagram.com/exotic_atif", Color.rgb(225, 48, 108), audioMgr, font);
+            addSocialButton(row1, R.drawable.ic_youtube, "YouTube", "https://www.youtube.com/@exotic_atif", Color.rgb(230, 33, 23), audioMgr, font);
+            addSocialButton(row1, R.drawable.ic_snapchat, "Snapchat", "https://www.snapchat.com/add/exotic_atif", Color.rgb(44, 49, 62), audioMgr, font);
+            layout.addView(row1);
+
+            // Row 2: Twitter, Threads, GitHub
+            LinearLayout row2 = new LinearLayout(this);
+            row2.setOrientation(LinearLayout.HORIZONTAL);
+            addSocialButton(row2, R.drawable.ic_x_twitter, "X / Twitter", "https://x.com/exotic_atif", Color.rgb(40, 45, 55), audioMgr, font);
+            addSocialButton(row2, R.drawable.ic_threads, "Threads", "https://www.threads.net/@exotic_atif", Color.rgb(30, 34, 45), audioMgr, font);
+            addSocialButton(row2, R.drawable.ic_github, "GitHub", "https://github.com/exotic-atif", Color.rgb(36, 41, 46), audioMgr, font);
+            layout.addView(row2);
+
+            // Row 3: Web / Releases
+            LinearLayout row3 = new LinearLayout(this);
+            row3.setOrientation(LinearLayout.HORIZONTAL);
+            addSocialButton(row3, R.drawable.ic_globe, "Official Releases & Web", "https://github.com/exotic-atif/urukku-manush/releases", Color.rgb(0, 131, 143), audioMgr, font);
+            layout.addView(row3);
 
             // Close button
             Button closeBtn = new Button(this);
@@ -1085,10 +1174,10 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
             btnCloseBg.setColor(Color.rgb(155, 89, 182));
             btnCloseBg.setCornerRadius(14f);
             closeBtn.setBackground(btnCloseBg);
-            closeBtn.setPadding(0, 18, 0, 18);
+            closeBtn.setPadding(0, 16, 0, 16);
             LinearLayout.LayoutParams lpClose = new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-            lpClose.setMargins(0, 18, 0, 10);
+            lpClose.setMargins(0, 16, 0, 6);
             closeBtn.setLayoutParams(lpClose);
             layout.addView(closeBtn);
 
@@ -1108,22 +1197,22 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
         });
     }
 
-    private void addSocialButton(LinearLayout layout, String label, String url, int bgColor, AudioManager audioMgr, Typeface font) {
+    private void addSocialButton(LinearLayout row, int iconResId, String label, String url, int bgColor, AudioManager audioMgr, Typeface font) {
         Button btn = new Button(this);
         btn.setText(label);
         btn.setTextColor(Color.WHITE);
         btn.setTypeface(font);
-        btn.setTextSize(13);
+        btn.setTextSize(12);
+        setButtonVectorIcon(btn, iconResId, Color.WHITE);
 
         GradientDrawable bg = new GradientDrawable();
         bg.setColor(bgColor);
         bg.setCornerRadius(12f);
         btn.setBackground(bg);
-        btn.setPadding(20, 12, 20, 12);
+        btn.setPadding(14, 12, 14, 12);
 
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        lp.setMargins(0, 5, 0, 5);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+        lp.setMargins(4, 4, 4, 4);
         btn.setLayoutParams(lp);
 
         btn.setOnClickListener(v -> {
@@ -1131,6 +1220,6 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
             openUrlSafely(url);
         });
 
-        layout.addView(btn);
+        row.addView(btn);
     }
 }

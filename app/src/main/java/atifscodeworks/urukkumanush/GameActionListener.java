@@ -5,5 +5,6 @@ public interface GameActionListener {
     void onShowOptionsDialog();
     void onShowCreditsDialog();
     void onShowLeaderboardDialog();
+    void onNewHighScore(int score);
 }
 

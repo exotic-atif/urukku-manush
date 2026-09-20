@@ -9,67 +9,59 @@ import android.util.Log;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import java.io.BufferedReader;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.OutputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+
+import okhttp3.MediaType;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.Response;
 
 public class LeaderboardManager {
     private static final String TAG = "LeaderboardManager";
     private static final String PREFS_NAME = "urukku_manush_prefs";
     private static final String KEY_PLAYER_NAME = "saved_player_name";
     private static final String KEY_SUPABASE_ANON_KEY = "supabase_anon_key";
+    private static final String KEY_CACHED_LEADERBOARD = "cached_leaderboard_json";
+    private static final String KEY_NEEDS_SYNC = "leaderboard_needs_sync";
+    private static final String KEY_LAST_SYNCED_SCORE = "leaderboard_last_synced_score";
 
-    // Supabase project: https://ibsvgxwihatdcsccqseq.supabase.co
     public static final String SUPABASE_URL = "https://ibsvgxwihatdcsccqseq.supabase.co";
-    // Default placeholder anon key - player/admin can also customize it in settings
-    public static final String DEFAULT_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.dummy_or_user_key";
+    // Project anon key placeholder or configured key
+    public static final String DEFAULT_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlic3ZneHdpaGF0ZGNzY2Nxc2VxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM2ODg1MTUsImV4cCI6MjA5OTI2NDUxNX0.tfqZUSKdyUl4SiPwwjFBoJ1Ss141i-ZU8jltvHv47L4";
+    private static final MediaType JSON_MEDIA_TYPE = MediaType.parse("application/json; charset=utf-8");
 
+    private final Context context;
     private final SharedPreferences prefs;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     public static class Entry {
-        public final String playerName;
+        public final String name;
         public final int score;
         public final String characterUsed;
 
-        public Entry(String playerName, int score, String characterUsed) {
-            this.playerName = playerName;
+        public Entry(String name, int score, String characterUsed) {
+            this.name = name;
             this.score = score;
             this.characterUsed = characterUsed;
         }
     }
 
     public interface FetchCallback {
-        void onSuccess(List<Entry> entries);
+        void onSuccess(List<Entry> entries, boolean isFromCache);
         void onError(String message);
     }
 
-    public interface SubmitCallback {
-        void onSuccess();
-        void onError(String message);
+    public interface SyncCallback {
+        void onSynced(int resolvedHighScore);
     }
 
     public LeaderboardManager(Context context) {
-        this.prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-    }
-
-    public String getPlayerName() {
-        return prefs.getString(KEY_PLAYER_NAME, "Player");
-    }
-
-    public void setPlayerName(String name) {
-        if (name != null && !name.trim().isEmpty()) {
-            prefs.edit().putString(KEY_PLAYER_NAME, name.trim()).apply();
-        }
+        this.context = context.getApplicationContext();
+        this.prefs = this.context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
     }
 
     public String getAnonKey() {
@@ -82,86 +74,203 @@ public class LeaderboardManager {
         }
     }
 
-    public void fetchTopScores(FetchCallback callback) {
+    public String getPlayerName(int headIndex) {
+        String saved = prefs.getString(KEY_PLAYER_NAME, "");
+        if (!saved.isEmpty()) return saved;
+        switch (headIndex) {
+            case 1: return "Anurag";
+            case 2: return "Vikram";
+            case 3: return "Adi";
+            case 4: return "Taniya";
+            default:
+                return "Urukku Manush";
+        }
+    }
+
+    public void setPlayerName(String name) {
+        if (name != null && !name.trim().isEmpty()) {
+            prefs.edit().putString(KEY_PLAYER_NAME, name.trim()).apply();
+        }
+    }
+
+    public boolean needsSync() {
+        return prefs.getBoolean(KEY_NEEDS_SYNC, false);
+    }
+
+    public void markNeedsSync(boolean needs) {
+        prefs.edit().putBoolean(KEY_NEEDS_SYNC, needs).apply();
+    }
+
+    public int getLastSyncedScore() {
+        return prefs.getInt(KEY_LAST_SYNCED_SCORE, 0);
+    }
+
+    public void setLastSyncedScore(int score) {
+        prefs.edit().putInt(KEY_LAST_SYNCED_SCORE, score).apply();
+    }
+
+    // Auto-sync when a new highscore is achieved during gameplay (silent background sync)
+    public void autoSyncHighScore(int localHighScore, String code, int headIndex, String characterUsed) {
+        if (code == null || code.isEmpty() || localHighScore <= 0) return;
+        if (localHighScore <= getLastSyncedScore()) return;
+
         executor.execute(() -> {
-            try {
-                String endpoint = SUPABASE_URL + "/rest/v1/leaderboard?select=player_name,score,character_used&order=score.desc&limit=10";
-                URL url = new URL(endpoint);
-                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                conn.setRequestMethod("GET");
-                conn.setRequestProperty("apikey", getAnonKey());
-                conn.setRequestProperty("Authorization", "Bearer " + getAnonKey());
-                conn.setRequestProperty("Accept", "application/json");
-                conn.setConnectTimeout(8000);
-                conn.setReadTimeout(8000);
-
-                int code = conn.getResponseCode();
-                if (code >= 200 && code < 300) {
-                    InputStream is = conn.getInputStream();
-                    BufferedReader reader = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8));
-                    StringBuilder sb = new StringBuilder();
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        sb.append(line);
-                    }
-                    reader.close();
-
-                    JSONArray arr = new JSONArray(sb.toString());
-                    List<Entry> list = new ArrayList<>();
-                    for (int i = 0; i < arr.length(); i++) {
-                        JSONObject obj = arr.getJSONObject(i);
-                        String name = obj.optString("player_name", "Unknown");
-                        int score = obj.optInt("score", 0);
-                        String charUsed = obj.optString("character_used", "head_1.png");
-                        list.add(new Entry(name, score, charUsed));
-                    }
-                    mainHandler.post(() -> callback.onSuccess(list));
-                } else {
-                    mainHandler.post(() -> callback.onError("Server returned response code: " + code));
-                }
-            } catch (Exception e) {
-                Log.e(TAG, "Error fetching leaderboard", e);
-                mainHandler.post(() -> callback.onError(e.getMessage() != null ? e.getMessage() : "Network error"));
+            boolean success = executePushScore(localHighScore, code, headIndex, characterUsed);
+            if (success) {
+                setLastSyncedScore(localHighScore);
+                markNeedsSync(false);
+            } else {
+                markNeedsSync(true);
             }
         });
     }
 
-    public void submitScore(String playerName, int score, String characterUsed, SubmitCallback callback) {
+    // Multi-device sync logic on activation or refresh:
+    // local > server -> push local
+    // local < server -> pull server
+    public void syncScoresWithServer(int localHighScore, String code, int headIndex, String characterUsed, SyncCallback callback) {
         executor.execute(() -> {
+            int resolved = localHighScore;
             try {
-                String endpoint = SUPABASE_URL + "/rest/v1/leaderboard";
-                URL url = new URL(endpoint);
-                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                conn.setRequestMethod("POST");
-                conn.setRequestProperty("apikey", getAnonKey());
-                conn.setRequestProperty("Authorization", "Bearer " + getAnonKey());
-                conn.setRequestProperty("Content-Type", "application/json");
-                conn.setRequestProperty("Prefer", "return=minimal");
-                conn.setDoOutput(true);
-                conn.setConnectTimeout(8000);
-                conn.setReadTimeout(8000);
-
-                JSONObject payload = new JSONObject();
-                payload.put("player_name", (playerName != null && !playerName.isEmpty()) ? playerName : "Player");
-                payload.put("score", score);
-                payload.put("character_used", (characterUsed != null) ? characterUsed : "head_1.png");
-
-                byte[] data = payload.toString().getBytes(StandardCharsets.UTF_8);
-                try (OutputStream os = conn.getOutputStream()) {
-                    os.write(data);
-                    os.flush();
-                }
-
-                int code = conn.getResponseCode();
-                if (code >= 200 && code < 300) {
-                    mainHandler.post(callback::onSuccess);
-                } else {
-                    mainHandler.post(() -> callback.onError("Score submit failed: code " + code));
+                if (code != null && !code.isEmpty()) {
+                    int serverScore = fetchServerScoreForCode(code);
+                    if (serverScore > resolved) {
+                        resolved = serverScore;
+                        setLastSyncedScore(serverScore);
+                        markNeedsSync(false);
+                    } else if (resolved > serverScore || needsSync()) {
+                        boolean ok = executePushScore(resolved, code, headIndex, characterUsed);
+                        if (ok) {
+                            setLastSyncedScore(resolved);
+                            markNeedsSync(false);
+                        } else {
+                            markNeedsSync(true);
+                        }
+                    }
                 }
             } catch (Exception e) {
-                Log.e(TAG, "Error submitting score", e);
-                mainHandler.post(() -> callback.onError(e.getMessage() != null ? e.getMessage() : "Network error"));
+                Log.w(TAG, "Multi-device score sync error: " + e.getMessage());
+            }
+
+            final int finalScore = resolved;
+            if (callback != null) {
+                mainHandler.post(() -> callback.onSynced(finalScore));
             }
         });
+    }
+
+    private int fetchServerScoreForCode(String code) {
+        try {
+            String url = SUPABASE_URL + "/rest/v1/leaderboard?code=eq." + code + "&select=score";
+            Request request = new Request.Builder()
+                    .url(url)
+                    .header("apikey", getAnonKey())
+                    .header("Authorization", "Bearer " + getAnonKey())
+                    .header("Accept", "application/json")
+                    .build();
+
+            try (Response response = HttpClientProvider.get().newCall(request).execute()) {
+                if (response.isSuccessful() && response.body() != null) {
+                    String jsonStr = response.body().string();
+                    JSONArray arr = new JSONArray(jsonStr);
+                    if (arr.length() > 0) {
+                        return arr.getJSONObject(0).optInt("score", 0);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Error querying server score for code: " + e.getMessage());
+        }
+        return -1;
+    }
+
+    private boolean executePushScore(int score, String code, int headIndex, String characterUsed) {
+        try {
+            // Upsert row by unique "code" column
+            String url = SUPABASE_URL + "/rest/v1/leaderboard?on_conflict=code";
+            JSONObject payload = new JSONObject();
+            payload.put("name", getPlayerName(headIndex));
+            payload.put("code", code);
+            payload.put("score", score);
+            payload.put("character_used", characterUsed != null ? characterUsed : "head_1.png");
+
+            RequestBody body = RequestBody.create(payload.toString(), JSON_MEDIA_TYPE);
+            Request request = new Request.Builder()
+                    .url(url)
+                    .header("apikey", getAnonKey())
+                    .header("Authorization", "Bearer " + getAnonKey())
+                    .header("Prefer", "resolution=merge-duplicates,return=minimal")
+                    .header("Content-Type", "application/json")
+                    .post(body)
+                    .build();
+
+            try (Response response = HttpClientProvider.get().newCall(request).execute()) {
+                return response.isSuccessful();
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Failed pushing score to Supabase", e);
+            return false;
+        }
+    }
+
+    // Fetch leaderboard with offline cache support
+    public void fetchLeaderboard(FetchCallback callback) {
+        executor.execute(() -> {
+            try {
+                String endpoint = SUPABASE_URL + "/rest/v1/leaderboard?select=name,score,character_used&order=score.desc&limit=10";
+                Request request = new Request.Builder()
+                        .url(endpoint)
+                        .header("apikey", getAnonKey())
+                        .header("Authorization", "Bearer " + getAnonKey())
+                        .header("Accept", "application/json")
+                        .build();
+
+                try (Response response = HttpClientProvider.get().newCall(request).execute()) {
+                    if (response.isSuccessful() && response.body() != null) {
+                        String bodyStr = response.body().string();
+                        // Cache for offline viewing
+                        prefs.edit().putString(KEY_CACHED_LEADERBOARD, bodyStr).apply();
+
+                        List<Entry> list = parseEntries(bodyStr);
+                        mainHandler.post(() -> callback.onSuccess(list, false));
+                        return;
+                    }
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "Network error fetching live leaderboard, loading cache: " + e.getMessage());
+            }
+
+            // Offline Cache Fallback
+            List<Entry> cached = getCachedEntries();
+            if (!cached.isEmpty()) {
+                mainHandler.post(() -> callback.onSuccess(cached, true));
+            } else {
+                mainHandler.post(() -> callback.onError("No network connection & no cached leaderboard available."));
+            }
+        });
+    }
+
+    public List<Entry> getCachedEntries() {
+        String cachedJson = prefs.getString(KEY_CACHED_LEADERBOARD, "");
+        if (!cachedJson.isEmpty()) {
+            return parseEntries(cachedJson);
+        }
+        return new ArrayList<>();
+    }
+
+    private List<Entry> parseEntries(String jsonStr) {
+        List<Entry> list = new ArrayList<>();
+        try {
+            JSONArray arr = new JSONArray(jsonStr);
+            for (int i = 0; i < arr.length(); i++) {
+                JSONObject obj = arr.getJSONObject(i);
+                String name = obj.optString("name", obj.optString("player_name", "Player"));
+                int score = obj.optInt("score", 0);
+                String charUsed = obj.optString("character_used", "head_1.png");
+                list.add(new Entry(name, score, charUsed));
+            }
+        } catch (Exception ignored) {
+        }
+        return list;
     }
 }

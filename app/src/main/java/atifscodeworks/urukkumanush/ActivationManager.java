@@ -21,6 +21,9 @@ public class ActivationManager {
     private static final String KEY_HEAD = "active_head";
     private static final String KEY_HEAD_INDEX = "active_head_index";
 
+    private static final String KEY_PENDING_ICON_HEAD = "pending_launcher_icon_head";
+    private static final String KEY_APPLIED_ICON_HEAD = "applied_launcher_icon_head";
+
     private final SharedPreferences prefs;
     private final Context context;
 
@@ -43,9 +46,6 @@ public class ActivationManager {
         this.context = context.getApplicationContext();
         this.prefs = this.context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
         loadBinaryActivationHashes();
-        if (isActivated()) {
-            updateLauncherIcon(getActiveHeadIndex());
-        }
     }
 
     private void loadBinaryActivationHashes() {
@@ -107,12 +107,13 @@ public class ActivationManager {
                     prefs.edit()
                             .putBoolean(KEY_ACTIVATED, true)
                             .putString(KEY_CODE, trimmed)
+                            .putString("activation_hash", hex)
                             .putString(KEY_HEAD, entry.headFile)
                             .putInt(KEY_HEAD_INDEX, entry.headIndex)
+                            .putInt(KEY_PENDING_ICON_HEAD, entry.headIndex)
                             .apply();
 
-                    // Dynamically update launcher app icon to the activated head
-                    updateLauncherIcon(entry.headIndex);
+                    // Defer launcher icon update to app close / exit so the active game does not get terminated
                     return true;
                 }
             }
@@ -120,6 +121,33 @@ public class ActivationManager {
             Log.e(TAG, "Error computing SHA-256 for activation", e);
         }
         return false;
+    }
+
+    /**
+     * Applies pending launcher icon update when the user closes or minimizes the app.
+     * In Android, modifying component enabled states can cause the running process to restart/finish.
+     * Doing this onStop/onDestroy ensures the user quits normally without unexpected interruption during gameplay.
+     */
+    public void applyPendingLauncherIconUpdate() {
+        try {
+            int pending = prefs.getInt(KEY_PENDING_ICON_HEAD, -1);
+            if (pending >= 1 && pending <= 4) {
+                prefs.edit().remove(KEY_PENDING_ICON_HEAD).putInt(KEY_APPLIED_ICON_HEAD, pending).apply();
+                updateLauncherIcon(pending);
+                return;
+            }
+
+            if (isActivated()) {
+                int activeHead = getActiveHeadIndex();
+                int applied = prefs.getInt(KEY_APPLIED_ICON_HEAD, -1);
+                if (applied != activeHead) {
+                    prefs.edit().putInt(KEY_APPLIED_ICON_HEAD, activeHead).apply();
+                    updateLauncherIcon(activeHead);
+                }
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Failed applying pending launcher icon update", e);
+        }
     }
 
     public void updateLauncherIcon(int headIndex) {
@@ -139,22 +167,28 @@ public class ActivationManager {
                 int targetState = (i + 1 == headIndex)
                         ? PackageManager.COMPONENT_ENABLED_STATE_ENABLED
                         : PackageManager.COMPONENT_ENABLED_STATE_DISABLED;
-                pm.setComponentEnabledSetting(
-                        new ComponentName(pkg, aliases[i]),
-                        targetState,
-                        PackageManager.DONT_KILL_APP
-                );
+                ComponentName comp = new ComponentName(pkg, aliases[i]);
+                if (pm.getComponentEnabledSetting(comp) != targetState) {
+                    pm.setComponentEnabledSetting(
+                            comp,
+                            targetState,
+                            PackageManager.DONT_KILL_APP
+                    );
+                }
             }
 
             // Disable default activity icon so launcher shows the active alias
             int defaultState = (headIndex >= 1 && headIndex <= 4)
                     ? PackageManager.COMPONENT_ENABLED_STATE_DISABLED
                     : PackageManager.COMPONENT_ENABLED_STATE_ENABLED;
-            pm.setComponentEnabledSetting(
-                    new ComponentName(pkg, defaultActivity),
-                    defaultState,
-                    PackageManager.DONT_KILL_APP
-            );
+            ComponentName defComp = new ComponentName(pkg, defaultActivity);
+            if (pm.getComponentEnabledSetting(defComp) != defaultState) {
+                pm.setComponentEnabledSetting(
+                        defComp,
+                        defaultState,
+                        PackageManager.DONT_KILL_APP
+                );
+            }
             Log.i(TAG, "Launcher icon updated for head " + headIndex);
         } catch (Exception e) {
             Log.e(TAG, "Failed updating launcher icon", e);
@@ -178,6 +212,23 @@ public class ActivationManager {
 
     public String getActiveCode() {
         return prefs.getString(KEY_CODE, "");
+    }
+
+    public String getActiveHash() {
+        String savedHash = prefs.getString("activation_hash", "");
+        if (!savedHash.isEmpty()) return savedHash;
+        String code = getActiveCode();
+        if (!code.isEmpty()) {
+            try {
+                MessageDigest digest = MessageDigest.getInstance("SHA-256");
+                byte[] inputHash = digest.digest(code.getBytes(StandardCharsets.UTF_8));
+                String hex = bytesToHex(inputHash);
+                prefs.edit().putString("activation_hash", hex).apply();
+                return hex;
+            } catch (Exception ignored) {
+            }
+        }
+        return "";
     }
 
     public static String bytesToHex(byte[] bytes) {

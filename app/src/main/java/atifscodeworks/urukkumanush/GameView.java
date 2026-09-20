@@ -373,6 +373,10 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
         audioManager.stopBgm();
         audioManager.playLoseSound();
         isNewBest = scoreManager.checkAndSaveScore(currentScore);
+        if (isNewBest && actionListener != null) {
+            final int best = currentScore;
+            post(() -> actionListener.onNewHighScore(best));
+        }
         currentState = State.GAME_OVER;
     }
 
