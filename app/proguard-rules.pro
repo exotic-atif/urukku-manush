@@ -1,0 +1,3 @@
+-keep class atifscodeworks.urukkumanush.** { *; }
+-dontwarn okhttp3.**
+-dontwarn okio.**

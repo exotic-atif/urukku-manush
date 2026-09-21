@@ -30,3 +30,8 @@ assets/bin/*
 
 app/src/main/res/drawable/app_logo.png
 app/src/main/res/drawable/head_*_icon.png
+
+# Firebase secrets & client configs
+app/google-services.json
+*firebase-adminsdk*.json
+*serviceAccountKey*.json

@@ -207,6 +207,11 @@ public class LeaderboardManager {
             payload.put("score", score);
             payload.put("character_used", characterUsed != null ? characterUsed : "head_1.png");
 
+            String token = prefs.getString(MrJumperMessagingService.KEY_FCM_TOKEN, "");
+            if (!token.isEmpty()) {
+                payload.put("fcm_token", token);
+            }
+
             RequestBody body = RequestBody.create(payload.toString(), JSON_MEDIA_TYPE);
             Request request = new Request.Builder()
                     .url(url)
@@ -224,6 +229,32 @@ public class LeaderboardManager {
             Log.e(TAG, "Failed pushing score to Supabase", e);
             return false;
         }
+    }
+
+    public void registerDeviceToken(String fcmToken, String code) {
+        if (fcmToken == null || fcmToken.isEmpty() || code == null || code.isEmpty()) return;
+        executor.execute(() -> {
+            try {
+                String url = SUPABASE_URL + "/rest/v1/leaderboard?code=eq." + code;
+                JSONObject payload = new JSONObject();
+                payload.put("fcm_token", fcmToken);
+
+                RequestBody body = RequestBody.create(payload.toString(), JSON_MEDIA_TYPE);
+                Request request = new Request.Builder()
+                        .url(url)
+                        .header("apikey", getAnonKey())
+                        .header("Authorization", "Bearer " + getAnonKey())
+                        .header("Content-Type", "application/json")
+                        .patch(body)
+                        .build();
+
+                try (Response response = HttpClientProvider.get().newCall(request).execute()) {
+                    Log.i(TAG, "Device token registered with Supabase: " + response.isSuccessful());
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "Failed registering FCM device token to Supabase", e);
+            }
+        });
     }
 
     // Fetch leaderboard with offline cache support

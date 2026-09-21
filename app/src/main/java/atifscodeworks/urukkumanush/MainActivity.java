@@ -1,6 +1,7 @@
 package atifscodeworks.urukkumanush;
 
 import android.app.AlertDialog;
+import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -79,6 +80,38 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
                         }
                     }
             );
+        }
+
+        initPushNotifications(actMgr);
+    }
+
+    private void initPushNotifications(ActivationManager actMgr) {
+        if (Build.VERSION.SDK_INT >= 33) {
+            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS)
+                    != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 101);
+            }
+        }
+
+        try {
+            com.google.firebase.messaging.FirebaseMessaging.getInstance().getToken()
+                    .addOnCompleteListener(task -> {
+                        if (!task.isSuccessful() || task.getResult() == null) {
+                            Log.w(TAG, "Fetching FCM registration token failed", task.getException());
+                            return;
+                        }
+                        String token = task.getResult();
+                        getSharedPreferences("urukku_manush_prefs", Context.MODE_PRIVATE)
+                                .edit()
+                                .putString(MrJumperMessagingService.KEY_FCM_TOKEN, token)
+                                .apply();
+
+                        if (actMgr.isActivated()) {
+                            leaderboardManager.registerDeviceToken(token, actMgr.getActiveHash());
+                        }
+                    });
+        } catch (Exception e) {
+            Log.w(TAG, "Error initializing Firebase Messaging: " + e.getMessage());
         }
     }
 

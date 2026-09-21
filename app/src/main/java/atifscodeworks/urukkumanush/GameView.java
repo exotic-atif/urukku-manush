@@ -296,8 +296,16 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
                 break;
 
             case PLAYING:
-                // Speed multiplier: faster after hitting 25
-                float speedMultiplier = (currentScore >= 25) ? 1.25f : 1.0f;
+                // Smooth progressive speed multiplier
+                float speedMultiplier = 1.0f;
+                if (currentScore >= 3 && currentScore <= 25) {
+                    speedMultiplier = 1.0f + ((currentScore - 3) / 22.0f) * 0.20f; // Smooth ramp 1.00x -> 1.20x
+                } else if (currentScore > 25 && currentScore <= 50) {
+                    speedMultiplier = 1.20f + ((currentScore - 25) / 25.0f) * 0.15f; // Smooth ramp 1.20x -> 1.35x
+                } else if (currentScore > 50) {
+                    speedMultiplier = 1.35f; // Hard cap at 1.35x for balanced gameplay
+                }
+
                 float currentObstacleSpeed = baseObstacleSpeed * speedMultiplier;
                 backgroundScroller.setSpeedMultiplier(speedMultiplier);
                 backgroundScroller.update(dt);
@@ -309,18 +317,13 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
                     return;
                 }
 
-                // Should pillars oscillate up and down? (after hitting 50)
-                boolean shouldOscillate = (currentScore >= 50);
-
                 // Update obstacles
                 float lastObstacleX = -1;
                 Iterator<Obstacle> iterator = obstacles.iterator();
                 while (iterator.hasNext()) {
                     Obstacle ob = iterator.next();
                     ob.setSpeed(currentObstacleSpeed);
-                    if (shouldOscillate) {
-                        ob.setOscillating(true);
-                    }
+                    // Movement state is strictly decided at spawn time; never mutate in-flight obstacles!
                     ob.update(dt);
 
                     if (ob.getX() > lastObstacleX) {
@@ -345,11 +348,13 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
                     }
                 }
 
-                // Spawn obstacles
+                // Spawn obstacles: After score 50, balanced 50/50 mix of oscillating vs static pipes
+                boolean spawnOscillating = (currentScore >= 50) && (Math.random() < 0.50);
+
                 if (obstacles.isEmpty()) {
-                    obstacles.add(new Obstacle(screenWidth, screenHeight, screenWidth + 100, currentObstacleSpeed, shouldOscillate));
+                    obstacles.add(new Obstacle(screenWidth, screenHeight, screenWidth + 100, currentObstacleSpeed, spawnOscillating));
                 } else if (lastObstacleX < screenWidth - obstacleSpawnDistance) {
-                    obstacles.add(new Obstacle(screenWidth, screenHeight, screenWidth + 50, currentObstacleSpeed, shouldOscillate));
+                    obstacles.add(new Obstacle(screenWidth, screenHeight, screenWidth + 50, currentObstacleSpeed, spawnOscillating));
                 }
                 break;
 
