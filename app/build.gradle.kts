@@ -12,8 +12,8 @@ android {
         applicationId = "atifscodeworks.urukkumanush"
         minSdk = 28
         targetSdk = 37
-        versionCode = 3
-        versionName = "2.1.0"
+        versionCode = 4
+        versionName = "2.1.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

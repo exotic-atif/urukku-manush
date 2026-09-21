@@ -1343,7 +1343,7 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
             // Summarized Concise Specs
             String bioText = "• Coding, Art & Audio Design: Atif Arman\n" +
                     "• Typography: DotGothic16 by Fontworks (Google Fonts OFL)\n" +
-                    "• Edition: Version 2.1.0 (High-FPS Dynamic Edition)";
+                    "• Edition: Version 2.1.1 (High-FPS Dynamic Edition)";
 
             TextView content = new TextView(this);
             content.setText(bioText);

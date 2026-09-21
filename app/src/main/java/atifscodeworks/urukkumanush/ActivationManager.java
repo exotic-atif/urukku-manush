@@ -83,6 +83,7 @@ public class ActivationManager {
         addFallback("9fcb2ea43cafc7762016761b378e1bc2918ef8a65f77911315011323c259bb54", 4);
         addFallback("f4cdaaa043a69dfa07a7c20fa1c5b15d3b5f8e6ef89a7fd98f12b9055a2857d2", 5);
         addFallback("d07d632ac8c3f13b7aecbb0fa582eee0b301802db98689f0c0f64c3753aee336", 6);
+        addFallback("a88d8b35fdd20a9461c84953aa020b119cdb73c9c6f4176d25a66fbb3428f68c", 7);
     }
 
     private void addFallback(String hex, int headIdx) {
@@ -133,7 +134,7 @@ public class ActivationManager {
     public void applyPendingLauncherIconUpdate() {
         try {
             int pending = prefs.getInt(KEY_PENDING_ICON_HEAD, -1);
-            if (pending >= 1 && pending <= 6) {
+            if (pending >= 1 && pending <= 7) {
                 prefs.edit().remove(KEY_PENDING_ICON_HEAD).putInt(KEY_APPLIED_ICON_HEAD, pending).apply();
                 updateLauncherIcon(pending);
                 return;
@@ -164,7 +165,8 @@ public class ActivationManager {
                     pkg + ".MainActivityHead3",
                     pkg + ".MainActivityHead4",
                     pkg + ".MainActivityHead5",
-                    pkg + ".MainActivityHead6"
+                    pkg + ".MainActivityHead6",
+                    pkg + ".MainActivityHead7"
             };
 
             for (int i = 0; i < aliases.length; i++) {
@@ -182,7 +184,7 @@ public class ActivationManager {
             }
 
             // Disable default activity icon so launcher shows the active alias
-            int defaultState = (headIndex >= 1 && headIndex <= 6)
+            int defaultState = (headIndex >= 1 && headIndex <= 7)
                     ? PackageManager.COMPONENT_ENABLED_STATE_DISABLED
                     : PackageManager.COMPONENT_ENABLED_STATE_ENABLED;
             ComponentName defComp = new ComponentName(pkg, defaultActivity);
@@ -213,6 +215,7 @@ public class ActivationManager {
         if (head.contains("4")) return 4;
         if (head.contains("5")) return 5;
         if (head.contains("6")) return 6;
+        if (head.contains("7")) return 7;
         return 1;
     }
 
