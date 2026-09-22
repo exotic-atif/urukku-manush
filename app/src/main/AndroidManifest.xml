@@ -171,7 +171,7 @@
 
         <!-- Firebase Cloud Messaging Receiver Service -->
         <service
-            android:name=".MrJumperMessagingService"
+            android:name=".UrukkuManushMessagingService"
             android:exported="false">
             <intent-filter>
                 <action android:name="com.google.firebase.MESSAGING_EVENT" />

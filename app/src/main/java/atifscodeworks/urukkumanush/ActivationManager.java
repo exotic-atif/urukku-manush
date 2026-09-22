@@ -126,6 +126,27 @@ public class ActivationManager {
         return false;
     }
 
+    public String computeSha256(String input) {
+        if (input == null || input.trim().isEmpty()) return "";
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(input.trim().getBytes(StandardCharsets.UTF_8));
+            return bytesToHex(hash);
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    public void activateWithOnlineProfile(String code, String hash, String name, String charUsed) {
+        prefs.edit()
+                .putBoolean(KEY_ACTIVATED, true)
+                .putString(KEY_CODE, code.trim())
+                .putString("activation_hash", hash)
+                .putString(KEY_HEAD, charUsed != null && !charUsed.isEmpty() ? charUsed : "custom_head.png")
+                .putInt(KEY_HEAD_INDEX, 0)
+                .apply();
+    }
+
     /**
      * Applies pending launcher icon update when the user closes or minimizes the app.
      * In Android, modifying component enabled states can cause the running process to restart/finish.

@@ -6,8 +6,11 @@ import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
+import android.graphics.Path;
+import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.Typeface;
+import android.graphics.drawable.Drawable;
 import android.os.Build;
 import android.util.AttributeSet;
 import android.util.Log;
@@ -15,6 +18,8 @@ import android.view.MotionEvent;
 import android.view.Surface;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
+
+import androidx.core.content.ContextCompat;
 
 import java.io.InputStream;
 import java.util.ArrayList;
@@ -53,11 +58,22 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
     private static final float INTRO_DURATION = 3.5f;
     private float introAlpha = 255f;
 
-    // Menu state variables
+    // Menu state variables (4 arcade buttons)
     private float menuBobbingTimer = 0f;
     private final RectF btnPlay = new RectF();
     private final RectF btnOptions = new RectF();
+    private final RectF btnLeaderboard = new RectF();
     private final RectF btnCredits = new RectF();
+    private int pressedMenuButton = 0; // 0=none, 1=play, 2=options, 3=leaderboard, 4=credits
+
+    private Drawable drawablePlay;
+    private Drawable drawableGear;
+    private Drawable drawableTrophy;
+    private Drawable drawableCredits;
+    private Drawable drawableRefresh;
+    private Drawable drawableClose;
+    private Typeface dotGothic;
+    private Typeface pressStartFont;
 
     // Playing state variables
     private int currentScore = 0;
@@ -67,22 +83,27 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
     private final RectF btnPause = new RectF();
 
     // Paused state variables
+    private final RectF pausedCard = new RectF();
     private final RectF btnResume = new RectF();
     private final RectF btnRestart = new RectF();
     private final RectF btnMenu = new RectF();
+    private int pressedPauseButton = 0; // 0=none, 1=resume, 2=restart, 3=menu
 
     // Countdown state variables
     private float countdownTimer = 3.0f;
 
     // Game Over state variables
+    private final RectF gameOverCard = new RectF();
+    private final RectF gameOverStatsCard = new RectF();
     private final RectF btnGameOverPlayAgain = new RectF();
     private final RectF btnGameOverMenu = new RectF();
-    private final RectF gameOverCard = new RectF();
+    private int pressedGameOverButton = 0; // 0=none, 1=playAgain, 2=menu
 
     // Reusable cached RectFs and Paints to avoid GC allocation during rendering
     private final RectF tempRect = new RectF();
     private final RectF tempRect2 = new RectF();
     private final RectF menuLogoDestRect = new RectF();
+    private final Path buttonClipPath = new Path();
 
     // Paints
     private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -115,8 +136,7 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
 
         loadLogoBitmap();
 
-        // Setup Paints with Google Font DotGothic16
-        Typeface dotGothic = null;
+        // Setup Paints with Fonts
         try {
             dotGothic = Typeface.createFromAsset(getContext().getAssets(), "fonts/DotGothic16-Regular.ttf");
         } catch (Exception e) {
@@ -124,6 +144,26 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
         }
         if (dotGothic == null) {
             dotGothic = Typeface.create(Typeface.DEFAULT, Typeface.BOLD);
+        }
+
+        try {
+            pressStartFont = Typeface.createFromAsset(getContext().getAssets(), "fonts/PressStart2P-Regular.ttf");
+        } catch (Exception e) {
+            Log.e(TAG, "Error loading PressStart2P font", e);
+        }
+        if (pressStartFont == null) {
+            pressStartFont = dotGothic;
+        }
+
+        try {
+            drawablePlay = ContextCompat.getDrawable(getContext(), R.drawable.ic_play);
+            drawableGear = ContextCompat.getDrawable(getContext(), R.drawable.ic_gear);
+            drawableTrophy = ContextCompat.getDrawable(getContext(), R.drawable.ic_leaderboard);
+            drawableCredits = ContextCompat.getDrawable(getContext(), R.drawable.ic_credits);
+            drawableRefresh = ContextCompat.getDrawable(getContext(), R.drawable.ic_refresh);
+            drawableClose = ContextCompat.getDrawable(getContext(), R.drawable.ic_close);
+        } catch (Exception e) {
+            Log.e(TAG, "Error loading menu drawables", e);
         }
 
         textPaint.setTextAlign(Paint.Align.CENTER);
@@ -210,45 +250,57 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
     }
 
     private void computeButtonLayouts() {
-        float btnW = screenWidth * 0.22f;
-        float btnH = screenHeight * 0.16f;
+        float btnW = screenWidth * 0.205f;
+        float btnH = screenHeight * 0.145f;
         float centerY = screenHeight * 0.72f;
 
-        // Menu buttons (Play, Options, Credits)
-        float totalMenuW = (btnW * 3) + (screenWidth * 0.04f * 2);
+        // Menu buttons (Play, Options, Leaderboard, Credits)
+        float spacing = screenWidth * 0.022f;
+        float totalMenuW = (btnW * 4) + (spacing * 3);
         float startX = (screenWidth - totalMenuW) / 2.0f;
-        float spacing = screenWidth * 0.04f;
 
         btnPlay.set(startX, centerY - (btnH / 2f), startX + btnW, centerY + (btnH / 2f));
-        btnOptions.set(startX + btnW + spacing, centerY - (btnH / 2f), startX + btnW * 2 + spacing, centerY + (btnH / 2f));
-        btnCredits.set(startX + (btnW + spacing) * 2, centerY - (btnH / 2f), startX + (btnW + spacing) * 2 + btnW, centerY + (btnH / 2f));
+        btnOptions.set(startX + (btnW + spacing), centerY - (btnH / 2f), startX + (btnW + spacing) + btnW, centerY + (btnH / 2f));
+        btnLeaderboard.set(startX + (btnW + spacing) * 2, centerY - (btnH / 2f), startX + (btnW + spacing) * 2 + btnW, centerY + (btnH / 2f));
+        btnCredits.set(startX + (btnW + spacing) * 3, centerY - (btnH / 2f), startX + (btnW + spacing) * 3 + btnW, centerY + (btnH / 2f));
 
         // In-game Pause button (top right)
-        float pauseBtnSize = screenHeight * 0.13f;
+        float pauseBtnSize = screenHeight * 0.12f;
         float margin = screenHeight * 0.04f;
         btnPause.set(screenWidth - margin - pauseBtnSize, margin, screenWidth - margin, margin + pauseBtnSize);
 
-        // Paused menu buttons (Resume, Restart, Main Menu)
-        float pBtnW = screenWidth * 0.24f;
-        float pBtnH = screenHeight * 0.15f;
-        float pSpacing = screenHeight * 0.03f;
-        float pCenterY = screenHeight * 0.52f;
+        // Paused cabinet & buttons (Parchment cabinet with 3 vertical arcade buttons)
+        float pausedCardW = screenWidth * 0.36f;
+        float pausedCardH = screenHeight * 0.78f;
+        pausedCard.set((screenWidth - pausedCardW) / 2f, (screenHeight - pausedCardH) / 2f,
+                (screenWidth + pausedCardW) / 2f, (screenHeight + pausedCardH) / 2f);
 
-        btnResume.set((screenWidth - pBtnW) / 2f, pCenterY - pBtnH * 1.5f - pSpacing, (screenWidth + pBtnW) / 2f, pCenterY - pBtnH * 0.5f - pSpacing);
-        btnRestart.set((screenWidth - pBtnW) / 2f, pCenterY - (pBtnH / 2f), (screenWidth + pBtnW) / 2f, pCenterY + (pBtnH / 2f));
-        btnMenu.set((screenWidth - pBtnW) / 2f, pCenterY + (pBtnH / 2f) + pSpacing, (screenWidth + pBtnW) / 2f, pCenterY + pBtnH * 1.5f + pSpacing);
+        float pBtnW = pausedCardW * 0.84f;
+        float pBtnH = pausedCardH * 0.18f;
+        float pSpacing = pausedCardH * 0.045f;
+        float pBtnStartX = (screenWidth - pBtnW) / 2f;
+        float pFirstBtnY = pausedCard.top + (pausedCardH * 0.28f);
 
-        // Game Over card & buttons
-        float cardW = screenWidth * 0.55f;
-        float cardH = screenHeight * 0.68f;
-        gameOverCard.set((screenWidth - cardW) / 2f, (screenHeight - cardH) / 2f, (screenWidth + cardW) / 2f, (screenHeight + cardH) / 2f);
+        btnResume.set(pBtnStartX, pFirstBtnY, pBtnStartX + pBtnW, pFirstBtnY + pBtnH);
+        btnRestart.set(pBtnStartX, pFirstBtnY + pBtnH + pSpacing, pBtnStartX + pBtnW, pFirstBtnY + (pBtnH * 2) + pSpacing);
+        btnMenu.set(pBtnStartX, pFirstBtnY + (pBtnH + pSpacing) * 2, pBtnStartX + pBtnW, pFirstBtnY + (pBtnH + pSpacing) * 2 + pBtnH);
 
-        float goBtnW = cardW * 0.40f;
-        float goBtnH = cardH * 0.22f;
-        float goBtnY = gameOverCard.bottom - goBtnH - (cardH * 0.10f);
-        float goGap = cardW * 0.08f;
-        float goTotalBtnW = (goBtnW * 2) + goGap;
-        float goStartX = gameOverCard.left + (cardW - goTotalBtnW) / 2f;
+        // Game Over cabinet & buttons
+        float cardW = screenWidth * 0.52f;
+        float cardH = screenHeight * 0.78f;
+        gameOverCard.set((screenWidth - cardW) / 2f, (screenHeight - cardH) / 2f,
+                (screenWidth + cardW) / 2f, (screenHeight + cardH) / 2f);
+
+        float statsPadX = cardW * 0.06f;
+        float statsTop = gameOverCard.top + (cardH * 0.25f);
+        float statsH = cardH * 0.40f;
+        gameOverStatsCard.set(gameOverCard.left + statsPadX, statsTop, gameOverCard.right - statsPadX, statsTop + statsH);
+
+        float goBtnW = cardW * 0.43f;
+        float goBtnH = cardH * 0.20f;
+        float goBtnY = gameOverCard.bottom - goBtnH - (cardH * 0.07f);
+        float goGap = cardW * 0.04f;
+        float goStartX = (screenWidth - (goBtnW * 2 + goGap)) / 2f;
 
         btnGameOverPlayAgain.set(goStartX, goBtnY, goStartX + goBtnW, goBtnY + goBtnH);
         btnGameOverMenu.set(goStartX + goBtnW + goGap, goBtnY, goStartX + goBtnW + goGap + goBtnW, goBtnY + goBtnH);
@@ -526,22 +578,38 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
     private void drawMenu(Canvas canvas) {
         float centerX = screenWidth / 2.0f;
 
-        // Title banner "Urukku Manush"
-        textStrokePaint.setTextSize(screenHeight * 0.14f);
-        textStrokePaint.setStrokeWidth(screenHeight * 0.02f);
-        textPaint.setTextSize(screenHeight * 0.14f);
-        textPaint.setColor(Color.rgb(255, 215, 0));
+        // Title banner "Urukku Manush" in Press Start 2P pixel font
+        textStrokePaint.setTypeface(pressStartFont);
+        textPaint.setTypeface(pressStartFont);
 
-        float titleY = screenHeight * 0.24f;
+        float titleSize = screenHeight * 0.11f;
+        textStrokePaint.setTextSize(titleSize);
+        textStrokePaint.setStrokeWidth(screenHeight * 0.022f);
+        textStrokePaint.setColor(Color.rgb(17, 17, 17)); // #111111
+
+        textPaint.setTextSize(titleSize);
+        textPaint.setColor(Color.rgb(244, 181, 27)); // #F4B51B Retro Gold
+
+        float titleY = screenHeight * 0.22f;
+
+        // Drop shadow for title
+        textStrokePaint.setColor(Color.rgb(23, 23, 23));
+        canvas.drawText("Urukku Manush", centerX + 3f, titleY + 5f, textStrokePaint);
+
+        textStrokePaint.setColor(Color.rgb(17, 17, 17));
         canvas.drawText("Urukku Manush", centerX, titleY, textStrokePaint);
         canvas.drawText("Urukku Manush", centerX, titleY, textPaint);
 
-        // High score badge
-        textPaint.setTextSize(screenHeight * 0.055f);
-        textPaint.setColor(Color.rgb(255, 235, 150));
-        textStrokePaint.setTextSize(screenHeight * 0.055f);
-        textStrokePaint.setStrokeWidth(screenHeight * 0.008f);
-        float badgeY = titleY + screenHeight * 0.09f;
+        // High score badge: "★ BEST SCORE: 89 ★"
+        float badgeSize = screenHeight * 0.042f;
+        textStrokePaint.setTextSize(badgeSize);
+        textStrokePaint.setStrokeWidth(screenHeight * 0.009f);
+        textStrokePaint.setColor(Color.rgb(17, 17, 17));
+
+        textPaint.setTextSize(badgeSize);
+        textPaint.setColor(Color.rgb(255, 230, 128));
+
+        float badgeY = titleY + screenHeight * 0.085f;
         String bestText = "★ BEST SCORE: " + scoreManager.getHighScore() + " ★";
         canvas.drawText(bestText, centerX, badgeY, textStrokePaint);
         canvas.drawText(bestText, centerX, badgeY, textPaint);
@@ -567,71 +635,185 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
             canvas.drawBitmap(displayBmp, null, menuLogoDestRect, null);
         }
 
-        // Draw 3 Menu Buttons
-        drawStyledButton(canvas, btnPlay, "PLAY", Color.rgb(46, 204, 113), Color.rgb(39, 174, 96));
-        drawStyledButton(canvas, btnOptions, "SETTINGS", Color.rgb(52, 152, 219), Color.rgb(41, 128, 185));
-        drawStyledButton(canvas, btnCredits, "CREDITS", Color.rgb(155, 89, 182), Color.rgb(142, 68, 173));
+        // Draw 4 Retro Arcade Menu Buttons matching UI Spec & Picture 3
+        drawArcadeButton(canvas, btnPlay, "PLAY", drawablePlay,
+                Color.rgb(44, 203, 99), Color.rgb(112, 229, 141), Color.rgb(22, 115, 58), 1.0f, pressedMenuButton == 1);
+        drawArcadeButton(canvas, btnOptions, "SETTINGS", drawableGear,
+                Color.rgb(38, 155, 232), Color.rgb(100, 198, 255), Color.rgb(18, 90, 145), 0.90f, pressedMenuButton == 2);
+        drawArcadeButton(canvas, btnLeaderboard, "LEADERBOARD", drawableTrophy,
+                Color.rgb(244, 181, 27), Color.rgb(255, 216, 77), Color.rgb(154, 106, 0), 0.72f, pressedMenuButton == 3);
+        drawArcadeButton(canvas, btnCredits, "CREDITS", drawableCredits,
+                Color.rgb(155, 89, 182), Color.rgb(192, 123, 224), Color.rgb(89, 51, 107), 0.92f, pressedMenuButton == 4);
+    }
+
+    private void drawArcadeButton(Canvas canvas, RectF rect, String label, Drawable icon,
+                                  int bodyColor, int highlightColor, int shadowColor, float textScale, boolean isPressed) {
+        float r = 10f;
+        float pressOffsetY = isPressed ? 3f : 0f;
+
+        // 1. Button Body Fill
+        uiPaint.setColor(bodyColor);
+        canvas.drawRoundRect(rect, r, r, uiPaint);
+
+        // 2. Inner 3D slim bottom bevel & top highlight (smooth rounded clip, NO sharp corners)
+        buttonClipPath.reset();
+        buttonClipPath.addRoundRect(rect, r, r, Path.Direction.CW);
+        canvas.save();
+        canvas.clipPath(buttonClipPath);
+
+        if (isPressed) {
+            // When pressed: face is depressed into bottom bevel (5%)
+            float stripH = rect.height() * 0.05f;
+            tempRect.set(rect.left, rect.bottom - stripH, rect.right, rect.bottom);
+            uiPaint.setColor(shadowColor);
+            canvas.drawRect(tempRect, uiPaint);
+        } else {
+            // Normal 3D state: slim, subtle bottom shadow bevel (11%) + subtle top highlight (8%)
+            float stripH = rect.height() * 0.11f;
+            tempRect.set(rect.left, rect.bottom - stripH, rect.right, rect.bottom);
+            uiPaint.setColor(shadowColor);
+            canvas.drawRect(tempRect, uiPaint);
+
+            float hlH = rect.height() * 0.08f;
+            tempRect.set(rect.left, rect.top, rect.right, rect.top + hlH);
+            uiPaint.setColor(highlightColor);
+            canvas.drawRect(tempRect, uiPaint);
+        }
+        canvas.restore();
+
+        // 3. Dark outer pixel border (#171717)
+        uiStrokePaint.setColor(Color.rgb(23, 23, 23));
+        uiStrokePaint.setStrokeWidth(3.5f);
+        canvas.drawRoundRect(rect, r, r, uiStrokePaint);
+
+        // 4. Centered Icon + Label group with physical depression offset
+        float baseTextSize = rect.height() * 0.28f * textScale;
+        textPaint.setTypeface(pressStartFont);
+        textPaint.setTextSize(baseTextSize);
+        textStrokePaint.setTypeface(pressStartFont);
+        textStrokePaint.setTextSize(baseTextSize);
+        textStrokePaint.setStrokeWidth(baseTextSize * 0.26f);
+
+        float textW = textPaint.measureText(label);
+        float iconSize = (icon != null) ? rect.height() * 0.44f : 0f;
+        float gap = (icon != null) ? rect.width() * 0.045f : 0f;
+        float totalContentW = iconSize + gap + textW;
+
+        float contentStartX = rect.centerX() - (totalContentW / 2.0f);
+        float centerY = rect.centerY() + pressOffsetY;
+
+        if (icon != null) {
+            float iconLeft = contentStartX;
+            float iconTop = centerY - (iconSize / 2.0f);
+            icon.setBounds((int) iconLeft, (int) iconTop, (int) (iconLeft + iconSize), (int) (iconTop + iconSize));
+            icon.setTint(Color.WHITE);
+            icon.draw(canvas);
+        }
+
+        float textX = contentStartX + iconSize + gap + (textW / 2.0f);
+        Paint.FontMetrics fm = textPaint.getFontMetrics();
+        float textY = centerY - (fm.ascent + fm.descent) / 2.0f;
+
+        textStrokePaint.setColor(Color.rgb(17, 17, 17));
+        textPaint.setColor(Color.WHITE);
+        canvas.drawText(label, textX, textY, textStrokePaint);
+        canvas.drawText(label, textX, textY, textPaint);
     }
 
     private void drawPlayingHUD(Canvas canvas) {
-        // Top Center: Current Score
-        textStrokePaint.setTextSize(screenHeight * 0.14f);
-        textStrokePaint.setStrokeWidth(screenHeight * 0.018f);
-        textPaint.setTextSize(screenHeight * 0.14f);
+        // Top Center: Current Score (Pixel Arcade styling)
+        float scoreSize = screenHeight * 0.12f;
+        textStrokePaint.setTypeface(pressStartFont);
+        textStrokePaint.setTextSize(scoreSize);
+        textStrokePaint.setStrokeWidth(scoreSize * 0.22f);
+        textStrokePaint.setColor(Color.rgb(23, 23, 23));
+        textPaint.setTypeface(pressStartFont);
+        textPaint.setTextSize(scoreSize);
         textPaint.setColor(Color.WHITE);
 
-        float scoreY = screenHeight * 0.15f;
+        float scoreY = screenHeight * 0.14f;
         canvas.drawText(String.valueOf(currentScore), screenWidth / 2.0f, scoreY, textStrokePaint);
         canvas.drawText(String.valueOf(currentScore), screenWidth / 2.0f, scoreY, textPaint);
 
         // Top Left: High Score
-        leftStrokePaint.setTextSize(screenHeight * 0.05f);
-        leftStrokePaint.setStrokeWidth(screenHeight * 0.007f);
-        leftAlignPaint.setTextSize(screenHeight * 0.05f);
-        leftAlignPaint.setColor(Color.rgb(255, 215, 0));
+        float bestSize = screenHeight * 0.040f;
+        leftStrokePaint.setTypeface(pressStartFont);
+        leftStrokePaint.setTextSize(bestSize);
+        leftStrokePaint.setStrokeWidth(bestSize * 0.22f);
+        leftStrokePaint.setColor(Color.rgb(23, 23, 23));
+        leftAlignPaint.setTypeface(pressStartFont);
+        leftAlignPaint.setTextSize(bestSize);
+        leftAlignPaint.setColor(Color.rgb(255, 216, 77)); // Retro gold
 
         String bestText = "BEST: " + Math.max(currentScore, scoreManager.getHighScore());
-        canvas.drawText(bestText, screenHeight * 0.04f, screenHeight * 0.10f, leftStrokePaint);
-        canvas.drawText(bestText, screenHeight * 0.04f, screenHeight * 0.10f, leftAlignPaint);
+        canvas.drawText(bestText, screenHeight * 0.04f, screenHeight * 0.09f, leftStrokePaint);
+        canvas.drawText(bestText, screenHeight * 0.04f, screenHeight * 0.09f, leftAlignPaint);
 
-        // Top Right: Pause button
-        uiPaint.setColor(Color.argb(190, 20, 24, 38));
-        canvas.drawRoundRect(btnPause, 16f, 16f, uiPaint);
-        uiStrokePaint.setColor(Color.rgb(0, 229, 255));
-        uiStrokePaint.setStrokeWidth(4f);
-        canvas.drawRoundRect(btnPause, 16f, 16f, uiStrokePaint);
+        // Top Right: Mini Retro Arcade Pause Button
+        uiPaint.setColor(Color.rgb(255, 240, 199)); // #FFF0C7 Parchment body
+        canvas.drawRoundRect(btnPause, 10f, 10f, uiPaint);
+        uiStrokePaint.setColor(Color.rgb(23, 23, 23)); // #171717 Dark border
+        uiStrokePaint.setStrokeWidth(3.5f);
+        canvas.drawRoundRect(btnPause, 10f, 10f, uiStrokePaint);
 
-        // Draw ⏸ pause symbol without object allocation
-        uiPaint.setColor(Color.WHITE);
-        float barW = btnPause.width() * 0.18f;
-        float barH = btnPause.height() * 0.50f;
-        float gap = btnPause.width() * 0.14f;
+        // Pause bars ❚❚
+        uiPaint.setColor(Color.rgb(23, 23, 23));
+        float barW = btnPause.width() * 0.16f;
+        float barH = btnPause.height() * 0.46f;
+        float gap = btnPause.width() * 0.10f;
         float cx = btnPause.centerX();
         float cy = btnPause.centerY();
 
         tempRect.set(cx - gap - barW, cy - barH / 2f, cx - gap, cy + barH / 2f);
-        canvas.drawRoundRect(tempRect, 4f, 4f, uiPaint);
+        canvas.drawRoundRect(tempRect, 3f, 3f, uiPaint);
         tempRect2.set(cx + gap, cy - barH / 2f, cx + gap + barW, cy + barH / 2f);
-        canvas.drawRoundRect(tempRect2, 4f, 4f, uiPaint);
+        canvas.drawRoundRect(tempRect2, 3f, 3f, uiPaint);
     }
 
     private void drawPausedOverlay(Canvas canvas) {
-        overlayPaint.setColor(Color.argb(190, 10, 12, 20));
+        overlayPaint.setColor(Color.argb(160, 0, 0, 0));
         canvas.drawRect(0, 0, screenWidth, screenHeight, overlayPaint);
 
-        float centerX = screenWidth / 2.0f;
+        // 1. Outer Cream Parchment Cabinet (#FFF0C7)
+        uiPaint.setColor(Color.rgb(255, 240, 199));
+        canvas.drawRoundRect(pausedCard, 20f, 20f, uiPaint);
+        uiStrokePaint.setColor(Color.rgb(23, 23, 23));
+        uiStrokePaint.setStrokeWidth(4.5f);
+        canvas.drawRoundRect(pausedCard, 20f, 20f, uiStrokePaint);
 
-        textStrokePaint.setTextSize(screenHeight * 0.13f);
-        textStrokePaint.setStrokeWidth(screenHeight * 0.015f);
-        textPaint.setTextSize(screenHeight * 0.13f);
-        textPaint.setColor(Color.rgb(0, 229, 255));
+        // 2. Header Box (Retro Arcade Blue #269BE8)
+        float hPadX = pausedCard.width() * 0.05f;
+        float hPadTop = pausedCard.height() * 0.04f;
+        float headerH = pausedCard.height() * 0.17f;
+        tempRect.set(pausedCard.left + hPadX, pausedCard.top + hPadTop,
+                pausedCard.right - hPadX, pausedCard.top + hPadTop + headerH);
 
-        canvas.drawText("PAUSED", centerX, screenHeight * 0.22f, textStrokePaint);
-        canvas.drawText("PAUSED", centerX, screenHeight * 0.22f, textPaint);
+        uiPaint.setColor(Color.rgb(38, 155, 232));
+        canvas.drawRoundRect(tempRect, 12f, 12f, uiPaint);
+        uiStrokePaint.setColor(Color.rgb(23, 23, 23));
+        uiStrokePaint.setStrokeWidth(3f);
+        canvas.drawRoundRect(tempRect, 12f, 12f, uiStrokePaint);
 
-        drawStyledButton(canvas, btnResume, "RESUME", Color.rgb(46, 204, 113), Color.rgb(39, 174, 96));
-        drawStyledButton(canvas, btnRestart, "RESTART", Color.rgb(230, 126, 34), Color.rgb(211, 84, 0));
-        drawStyledButton(canvas, btnMenu, "MAIN MENU", Color.rgb(52, 152, 219), Color.rgb(41, 128, 185));
+        float titleSize = headerH * 0.50f;
+        textPaint.setTypeface(pressStartFont);
+        textPaint.setTextSize(titleSize);
+        textStrokePaint.setTypeface(pressStartFont);
+        textStrokePaint.setTextSize(titleSize);
+        textStrokePaint.setStrokeWidth(titleSize * 0.24f);
+        textStrokePaint.setColor(Color.rgb(23, 23, 23));
+        textPaint.setColor(Color.WHITE);
+
+        float titleY = tempRect.centerY() + (titleSize * 0.35f);
+        canvas.drawText("PAUSED", tempRect.centerX(), titleY, textStrokePaint);
+        canvas.drawText("PAUSED", tempRect.centerX(), titleY, textPaint);
+
+        // 3. Action Buttons (Retro Arcade 3D Buttons with slim bevel)
+        drawArcadeButton(canvas, btnResume, "RESUME", drawablePlay,
+                Color.rgb(44, 203, 99), Color.rgb(112, 229, 141), Color.rgb(22, 115, 58), 0.85f, pressedPauseButton == 1);
+        drawArcadeButton(canvas, btnRestart, "RESTART", drawableRefresh,
+                Color.rgb(244, 181, 27), Color.rgb(255, 216, 77), Color.rgb(154, 106, 0), 0.82f, pressedPauseButton == 2);
+        drawArcadeButton(canvas, btnMenu, "MAIN MENU", drawableClose,
+                Color.rgb(232, 75, 75), Color.rgb(247, 108, 108), Color.rgb(143, 41, 41), 0.78f, pressedPauseButton == 3);
     }
 
     private void drawCountdown(Canvas canvas) {
@@ -649,6 +831,7 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
 
         textStrokePaint.setTextSize(screenHeight * 0.26f * scale);
         textStrokePaint.setStrokeWidth(screenHeight * 0.025f * scale);
+        textStrokePaint.setColor(Color.rgb(23, 23, 23));
         textPaint.setTextSize(screenHeight * 0.26f * scale);
 
         if ("GO!".equals(countStr)) {
@@ -662,82 +845,284 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
     }
 
     private void drawGameOverOverlay(Canvas canvas) {
-        overlayPaint.setColor(Color.argb(200, 10, 12, 20));
+        overlayPaint.setColor(Color.argb(160, 0, 0, 0));
         canvas.drawRect(0, 0, screenWidth, screenHeight, overlayPaint);
 
-        uiPaint.setColor(Color.rgb(28, 33, 50));
-        canvas.drawRoundRect(gameOverCard, 28f, 28f, uiPaint);
-        uiStrokePaint.setColor(Color.rgb(231, 76, 60));
-        uiStrokePaint.setStrokeWidth(6f);
-        canvas.drawRoundRect(gameOverCard, 28f, 28f, uiStrokePaint);
+        // 1. Outer Cream Parchment Cabinet (#FFF0C7)
+        uiPaint.setColor(Color.rgb(255, 240, 199));
+        canvas.drawRoundRect(gameOverCard, 20f, 20f, uiPaint);
+        uiStrokePaint.setColor(Color.rgb(23, 23, 23));
+        uiStrokePaint.setStrokeWidth(4.5f);
+        canvas.drawRoundRect(gameOverCard, 20f, 20f, uiStrokePaint);
 
-        float centerX = gameOverCard.centerX();
+        // 2. Header Box (Retro Arcade Red #E84B4B)
+        float hPadX = gameOverCard.width() * 0.04f;
+        float hPadTop = gameOverCard.height() * 0.04f;
+        float headerH = gameOverCard.height() * 0.17f;
+        tempRect.set(gameOverCard.left + hPadX, gameOverCard.top + hPadTop,
+                gameOverCard.right - hPadX, gameOverCard.top + hPadTop + headerH);
 
-        textStrokePaint.setTextSize(screenHeight * 0.11f);
-        textStrokePaint.setStrokeWidth(screenHeight * 0.015f);
-        textPaint.setTextSize(screenHeight * 0.11f);
-        textPaint.setColor(Color.rgb(231, 76, 60));
+        uiPaint.setColor(Color.rgb(232, 75, 75));
+        canvas.drawRoundRect(tempRect, 12f, 12f, uiPaint);
+        uiStrokePaint.setColor(Color.rgb(23, 23, 23));
+        uiStrokePaint.setStrokeWidth(3f);
+        canvas.drawRoundRect(tempRect, 12f, 12f, uiStrokePaint);
 
-        float titleY = gameOverCard.top + (screenHeight * 0.14f);
-        canvas.drawText("GAME OVER", centerX, titleY, textStrokePaint);
-        canvas.drawText("GAME OVER", centerX, titleY, textPaint);
-
-        textStrokePaint.setTextSize(screenHeight * 0.075f);
-        textStrokePaint.setStrokeWidth(screenHeight * 0.01f);
-        textPaint.setTextSize(screenHeight * 0.075f);
+        float titleSize = headerH * 0.50f;
+        textPaint.setTypeface(pressStartFont);
+        textPaint.setTextSize(titleSize);
+        textStrokePaint.setTypeface(pressStartFont);
+        textStrokePaint.setTextSize(titleSize);
+        textStrokePaint.setStrokeWidth(titleSize * 0.24f);
+        textStrokePaint.setColor(Color.rgb(23, 23, 23));
         textPaint.setColor(Color.WHITE);
 
-        float scoreY = titleY + (screenHeight * 0.11f);
-        canvas.drawText("SCORE: " + currentScore, centerX, scoreY, textStrokePaint);
-        canvas.drawText("SCORE: " + currentScore, centerX, scoreY, textPaint);
+        float titleY = tempRect.centerY() + (titleSize * 0.35f);
+        canvas.drawText("GAME OVER", tempRect.centerX(), titleY, textStrokePaint);
+        canvas.drawText("GAME OVER", tempRect.centerX(), titleY, textPaint);
 
-        textPaint.setTextSize(screenHeight * 0.065f);
-        textPaint.setColor(Color.rgb(255, 215, 0));
-        float bestY = scoreY + (screenHeight * 0.09f);
-        canvas.drawText("BEST: " + scoreManager.getHighScore(), centerX, bestY, textStrokePaint);
-        canvas.drawText("BEST: " + scoreManager.getHighScore(), centerX, bestY, textPaint);
+        // 3. Inner Card for Score & Best (#FDF3DA)
+        uiPaint.setColor(Color.rgb(253, 243, 218));
+        canvas.drawRoundRect(gameOverStatsCard, 12f, 12f, uiPaint);
+        uiStrokePaint.setColor(Color.rgb(216, 185, 106));
+        uiStrokePaint.setStrokeWidth(2.5f);
+        canvas.drawRoundRect(gameOverStatsCard, 12f, 12f, uiStrokePaint);
 
+        float statsCenterX = gameOverStatsCard.centerX();
+        float scoreLabelSize = gameOverStatsCard.height() * 0.17f;
+        float scoreValSize = gameOverStatsCard.height() * 0.29f;
+
+        float col1X = gameOverStatsCard.left + (gameOverStatsCard.width() * 0.28f);
+        float col2X = gameOverStatsCard.right - (gameOverStatsCard.width() * 0.28f);
+        float labelY = gameOverStatsCard.top + (gameOverStatsCard.height() * 0.36f);
+        float valY = gameOverStatsCard.top + (gameOverStatsCard.height() * 0.74f);
+
+        // SCORE column
+        textPaint.setTypeface(pressStartFont);
+        textPaint.setTextSize(scoreLabelSize);
+        textPaint.setColor(Color.rgb(90, 80, 70));
+        canvas.drawText("SCORE", col1X, labelY, textPaint);
+
+        textPaint.setTextSize(scoreValSize);
+        textStrokePaint.setTextSize(scoreValSize);
+        textStrokePaint.setStrokeWidth(scoreValSize * 0.22f);
+        textStrokePaint.setColor(Color.rgb(23, 23, 23));
+        textPaint.setColor(Color.WHITE);
+        canvas.drawText(String.valueOf(currentScore), col1X, valY, textStrokePaint);
+        canvas.drawText(String.valueOf(currentScore), col1X, valY, textPaint);
+
+        // Divider
+        uiPaint.setColor(Color.rgb(216, 185, 106));
+        float divTop = gameOverStatsCard.top + (gameOverStatsCard.height() * 0.16f);
+        float divBottom = gameOverStatsCard.bottom - (gameOverStatsCard.height() * 0.16f);
+        canvas.drawRect(statsCenterX - 1.5f, divTop, statsCenterX + 1.5f, divBottom, uiPaint);
+
+        // BEST column
+        textPaint.setTypeface(pressStartFont);
+        textPaint.setTextSize(scoreLabelSize);
+        textPaint.setColor(Color.rgb(154, 106, 0));
+        canvas.drawText("BEST", col2X, labelY, textPaint);
+
+        textPaint.setTextSize(scoreValSize);
+        textStrokePaint.setTextSize(scoreValSize);
+        textStrokePaint.setStrokeWidth(scoreValSize * 0.22f);
+        textStrokePaint.setColor(Color.rgb(23, 23, 23));
+        textPaint.setColor(Color.rgb(244, 181, 27));
+        canvas.drawText(String.valueOf(scoreManager.getHighScore()), col2X, valY, textStrokePaint);
+        canvas.drawText(String.valueOf(scoreManager.getHighScore()), col2X, valY, textPaint);
+
+        // New record banner if applicable
         if (isNewBest) {
-            textPaint.setTextSize(screenHeight * 0.045f);
-            textPaint.setColor(Color.rgb(46, 204, 113));
-            canvas.drawText("★ NEW BEST RECORD! ★", centerX, bestY + (screenHeight * 0.06f), textPaint);
+            float badgeH = gameOverStatsCard.height() * 0.22f;
+            tempRect.set(gameOverStatsCard.left + 16f, gameOverStatsCard.bottom - badgeH - 6f,
+                    gameOverStatsCard.right - 16f, gameOverStatsCard.bottom - 6f);
+            uiPaint.setColor(Color.rgb(44, 203, 99));
+            canvas.drawRoundRect(tempRect, 6f, 6f, uiPaint);
+            uiStrokePaint.setColor(Color.rgb(23, 23, 23));
+            uiStrokePaint.setStrokeWidth(2f);
+            canvas.drawRoundRect(tempRect, 6f, 6f, uiStrokePaint);
+
+            float bTextSize = badgeH * 0.54f;
+            textPaint.setTextSize(bTextSize);
+            textStrokePaint.setTextSize(bTextSize);
+            textStrokePaint.setStrokeWidth(bTextSize * 0.22f);
+            textStrokePaint.setColor(Color.rgb(23, 23, 23));
+            textPaint.setColor(Color.WHITE);
+            canvas.drawText("★ NEW BEST RECORD! ★", tempRect.centerX(), tempRect.centerY() + (bTextSize * 0.35f), textStrokePaint);
+            canvas.drawText("★ NEW BEST RECORD! ★", tempRect.centerX(), tempRect.centerY() + (bTextSize * 0.35f), textPaint);
         }
 
-        drawStyledButton(canvas, btnGameOverPlayAgain, "PLAY AGAIN", Color.rgb(46, 204, 113), Color.rgb(39, 174, 96));
-        drawStyledButton(canvas, btnGameOverMenu, "MAIN MENU", Color.rgb(52, 152, 219), Color.rgb(41, 128, 185));
-    }
-
-    private void drawStyledButton(Canvas canvas, RectF rect, String label, int topColor, int bottomColor) {
-        tempRect.set(rect.left, rect.top + 6f, rect.right, rect.bottom + 6f);
-        uiPaint.setColor(Color.argb(90, 0, 0, 0));
-        canvas.drawRoundRect(tempRect, 18f, 18f, uiPaint);
-
-        uiPaint.setColor(topColor);
-        canvas.drawRoundRect(rect, 18f, 18f, uiPaint);
-
-        uiStrokePaint.setColor(Color.argb(180, 255, 255, 255));
-        uiStrokePaint.setStrokeWidth(3f);
-        canvas.drawRoundRect(rect, 18f, 18f, uiStrokePaint);
-
-        float textSize = rect.height() * 0.40f;
-        textStrokePaint.setTextSize(textSize);
-        textStrokePaint.setStrokeWidth(textSize * 0.15f);
-        textPaint.setTextSize(textSize);
-        textPaint.setColor(Color.WHITE);
-
-        float textY = rect.centerY() + (textSize * 0.35f);
-        canvas.drawText(label, rect.centerX(), textY, textStrokePaint);
-        canvas.drawText(label, rect.centerX(), textY, textPaint);
+        // 4. Action Buttons (Retro Arcade 3D Buttons with slim bevel and icons)
+        drawArcadeButton(canvas, btnGameOverPlayAgain, "PLAY AGAIN", drawablePlay,
+                Color.rgb(44, 203, 99), Color.rgb(112, 229, 141), Color.rgb(22, 115, 58), 0.72f, pressedGameOverButton == 1);
+        drawArcadeButton(canvas, btnGameOverMenu, "MAIN MENU", drawableClose,
+                Color.rgb(38, 155, 232), Color.rgb(100, 198, 255), Color.rgb(18, 90, 145), 0.75f, pressedGameOverButton == 2);
     }
 
     @Override
     public boolean onTouchEvent(MotionEvent event) {
-        if (event.getAction() != MotionEvent.ACTION_DOWN) {
-            return super.onTouchEvent(event);
-        }
-
         float tx = event.getX();
         float ty = event.getY();
+        int action = event.getAction();
+
+        if (currentState == State.MENU) {
+            switch (action) {
+                case MotionEvent.ACTION_DOWN:
+                    if (btnPlay.contains(tx, ty)) {
+                        pressedMenuButton = 1;
+                        performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY);
+                        return true;
+                    } else if (btnOptions.contains(tx, ty)) {
+                        pressedMenuButton = 2;
+                        performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY);
+                        return true;
+                    } else if (btnLeaderboard.contains(tx, ty)) {
+                        pressedMenuButton = 3;
+                        performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY);
+                        return true;
+                    } else if (btnCredits.contains(tx, ty)) {
+                        pressedMenuButton = 4;
+                        performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY);
+                        return true;
+                    }
+                    pressedMenuButton = 0;
+                    return true;
+
+                case MotionEvent.ACTION_MOVE:
+                    if (pressedMenuButton == 1 && !btnPlay.contains(tx, ty)) pressedMenuButton = 0;
+                    else if (pressedMenuButton == 2 && !btnOptions.contains(tx, ty)) pressedMenuButton = 0;
+                    else if (pressedMenuButton == 3 && !btnLeaderboard.contains(tx, ty)) pressedMenuButton = 0;
+                    else if (pressedMenuButton == 4 && !btnCredits.contains(tx, ty)) pressedMenuButton = 0;
+                    return true;
+
+                case MotionEvent.ACTION_UP:
+                    int clicked = pressedMenuButton;
+                    pressedMenuButton = 0;
+                    if (clicked == 1 && btnPlay.contains(tx, ty)) {
+                        handlePlayClicked();
+                        return true;
+                    } else if (clicked == 2 && btnOptions.contains(tx, ty)) {
+                        audioManager.playClickSound();
+                        if (actionListener != null) actionListener.onShowOptionsDialog();
+                        return true;
+                    } else if (clicked == 3 && btnLeaderboard.contains(tx, ty)) {
+                        audioManager.playClickSound();
+                        if (actionListener != null) actionListener.onShowLeaderboardDialog();
+                        return true;
+                    } else if (clicked == 4 && btnCredits.contains(tx, ty)) {
+                        audioManager.playClickSound();
+                        if (actionListener != null) actionListener.onShowCreditsDialog();
+                        return true;
+                    }
+                    return true;
+
+                case MotionEvent.ACTION_CANCEL:
+                    pressedMenuButton = 0;
+                    return true;
+            }
+            return true;
+        }
+
+        if (currentState == State.PAUSED) {
+            switch (action) {
+                case MotionEvent.ACTION_DOWN:
+                    if (btnResume.contains(tx, ty)) {
+                        pressedPauseButton = 1;
+                        performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY);
+                        return true;
+                    } else if (btnRestart.contains(tx, ty)) {
+                        pressedPauseButton = 2;
+                        performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY);
+                        return true;
+                    } else if (btnMenu.contains(tx, ty)) {
+                        pressedPauseButton = 3;
+                        performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY);
+                        return true;
+                    }
+                    pressedPauseButton = 0;
+                    return true;
+
+                case MotionEvent.ACTION_MOVE:
+                    if (pressedPauseButton == 1 && !btnResume.contains(tx, ty)) pressedPauseButton = 0;
+                    else if (pressedPauseButton == 2 && !btnRestart.contains(tx, ty)) pressedPauseButton = 0;
+                    else if (pressedPauseButton == 3 && !btnMenu.contains(tx, ty)) pressedPauseButton = 0;
+                    return true;
+
+                case MotionEvent.ACTION_UP:
+                    int pClicked = pressedPauseButton;
+                    pressedPauseButton = 0;
+                    if (pClicked == 1 && btnResume.contains(tx, ty)) {
+                        audioManager.playClickSound();
+                        countdownTimer = 3.0f;
+                        currentState = State.COUNTDOWN;
+                        return true;
+                    } else if (pClicked == 2 && btnRestart.contains(tx, ty)) {
+                        audioManager.playClickSound();
+                        audioManager.playRandomPlaySound();
+                        audioManager.startBgm();
+                        startNewGame();
+                        return true;
+                    } else if (pClicked == 3 && btnMenu.contains(tx, ty)) {
+                        audioManager.playClickSound();
+                        audioManager.stopBgm();
+                        currentState = State.MENU;
+                        return true;
+                    }
+                    return true;
+
+                case MotionEvent.ACTION_CANCEL:
+                    pressedPauseButton = 0;
+                    return true;
+            }
+            return true;
+        }
+
+        if (currentState == State.GAME_OVER) {
+            switch (action) {
+                case MotionEvent.ACTION_DOWN:
+                    if (btnGameOverPlayAgain.contains(tx, ty)) {
+                        pressedGameOverButton = 1;
+                        performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY);
+                        return true;
+                    } else if (btnGameOverMenu.contains(tx, ty)) {
+                        pressedGameOverButton = 2;
+                        performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY);
+                        return true;
+                    }
+                    pressedGameOverButton = 0;
+                    return true;
+
+                case MotionEvent.ACTION_MOVE:
+                    if (pressedGameOverButton == 1 && !btnGameOverPlayAgain.contains(tx, ty)) pressedGameOverButton = 0;
+                    else if (pressedGameOverButton == 2 && !btnGameOverMenu.contains(tx, ty)) pressedGameOverButton = 0;
+                    return true;
+
+                case MotionEvent.ACTION_UP:
+                    int goClicked = pressedGameOverButton;
+                    pressedGameOverButton = 0;
+                    if (goClicked == 1 && btnGameOverPlayAgain.contains(tx, ty)) {
+                        audioManager.playClickSound();
+                        audioManager.playRandomPlaySound();
+                        audioManager.startBgm();
+                        startNewGame();
+                        return true;
+                    } else if (goClicked == 2 && btnGameOverMenu.contains(tx, ty)) {
+                        audioManager.playClickSound();
+                        currentState = State.MENU;
+                        return true;
+                    }
+                    return true;
+
+                case MotionEvent.ACTION_CANCEL:
+                    pressedGameOverButton = 0;
+                    return true;
+            }
+            return true;
+        }
+
+        if (action != MotionEvent.ACTION_DOWN) {
+            return super.onTouchEvent(event);
+        }
 
         switch (currentState) {
             case INTRO:
@@ -753,27 +1138,11 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
                 return true;
 
             case MENU:
-                if (btnPlay.contains(tx, ty)) {
-                    handlePlayClicked();
-                    return true;
-                } else if (btnOptions.contains(tx, ty)) {
-                    audioManager.playClickSound(); // Menu click SFX
-                    if (actionListener != null) {
-                        actionListener.onShowOptionsDialog();
-                    }
-                    return true;
-                } else if (btnCredits.contains(tx, ty)) {
-                    audioManager.playClickSound(); // Menu click SFX
-                    if (actionListener != null) {
-                        actionListener.onShowCreditsDialog();
-                    }
-                    return true;
-                }
                 return true;
 
             case PLAYING:
                 if (btnPause.contains(tx, ty)) {
-                    audioManager.playClickSound(); // Pause click SFX
+                    audioManager.playClickSound();
                     pauseGame();
                     return true;
                 }
@@ -781,41 +1150,7 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
                 audioManager.playJumpSound();
                 return true;
 
-            case PAUSED:
-                if (btnResume.contains(tx, ty)) {
-                    audioManager.playClickSound(); // Resume click SFX
-                    countdownTimer = 3.0f;
-                    currentState = State.COUNTDOWN;
-                    return true;
-                } else if (btnRestart.contains(tx, ty)) {
-                    audioManager.playClickSound(); // Restart click SFX
-                    audioManager.playRandomPlaySound();
-                    audioManager.startBgm();
-                    startNewGame();
-                    return true;
-                } else if (btnMenu.contains(tx, ty)) {
-                    audioManager.playClickSound(); // Menu click SFX
-                    audioManager.stopBgm();
-                    currentState = State.MENU;
-                    return true;
-                }
-                return true;
-
             case COUNTDOWN:
-                return true;
-
-            case GAME_OVER:
-                if (btnGameOverPlayAgain.contains(tx, ty)) {
-                    audioManager.playClickSound(); // Play Again click SFX
-                    audioManager.playRandomPlaySound();
-                    audioManager.startBgm();
-                    startNewGame();
-                    return true;
-                } else if (btnGameOverMenu.contains(tx, ty)) {
-                    audioManager.playClickSound(); // Menu click SFX
-                    currentState = State.MENU;
-                    return true;
-                }
                 return true;
         }
 

@@ -1,0 +1,46 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="36dp"
+    android:height="36dp"
+    android:viewportWidth="36"
+    android:viewportHeight="36">
+    
+    <!-- Crown at top -->
+    <!-- Crown Base -->
+    <path
+        android:fillColor="#171717"
+        android:pathData="M12,4 h12 v9 h-12 z" />
+    <path
+        android:fillColor="#FFD84D"
+        android:pathData="M13,5 h10 v7 h-10 z" />
+    <!-- Crown cutouts for 3 points -->
+    <path
+        android:fillColor="#171717"
+        android:pathData="M15,5 h2 v3 h-2 z M19,5 h2 v3 h-2 z" />
+    <path
+        android:fillColor="#4FAE4F"
+        android:pathData="M15,4 h2 v3 h-2 z M19,4 h2 v3 h-2 z" />
+    <!-- Crown Jewels -->
+    <path
+        android:fillColor="#E84B4B"
+        android:pathData="M13,10 h2 v2 h-2 z M17,10 h2 v2 h-2 z M21,10 h2 v2 h-2 z" />
+
+    <!-- Earth Globe Outline -->
+    <path
+        android:fillColor="#171717"
+        android:pathData="M10,12 h16 v2 h-16 z M7,14 h22 v2 h-22 z M5,16 h26 v12 h-26 z M7,28 h22 v2 h-22 z M10,30 h16 v2 h-16 z M14,32 h8 v1 h-8 z" />
+
+    <!-- Earth Ocean Fill (Cyan/Blue) -->
+    <path
+        android:fillColor="#3498DB"
+        android:pathData="M10,13 h16 v2 h-16 z M8,15 h20 v2 h-20 z M6,17 h24 v10 h-24 z M8,27 h20 v2 h-20 z M10,29 h16 v2 h-16 z" />
+
+    <!-- Earth Continents (Pixel Green) -->
+    <path
+        android:fillColor="#2ECC71"
+        android:pathData="M10,15 h4 v3 h-4 z M16,16 h6 v4 h-6 z M8,19 h6 v5 h-6 z M12,24 h8 v3 h-8 z M22,21 h5 v5 h-5 z M18,18 h4 v3 h-4 z M14,27 h6 v2 h-6 z" />
+
+    <!-- Earth Pixel Highlight (White shimmer) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M9,16 h2 v2 h-2 z M7,18 h2 v3 h-2 z" />
+</vector>

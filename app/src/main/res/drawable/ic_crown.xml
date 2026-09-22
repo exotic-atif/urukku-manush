@@ -1,0 +1,22 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="28dp"
+    android:height="28dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Dark outline -->
+    <path
+        android:fillColor="#171717"
+        android:pathData="M2,5h4v3h2V5h4v3h2V5h4v3h2v11H2V5z" />
+    <!-- Gold body -->
+    <path
+        android:fillColor="#FFD84D"
+        android:pathData="M3,6h2v3h2V6h4v3h2V6h4v3h2v8H3V6z" />
+    <!-- White highlight -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M3,6h2v2H3V6z M9,6h2v2H9V6z M15,6h2v2h-2V6z" />
+    <!-- Red gems at bottom band -->
+    <path
+        android:fillColor="#E84B4B"
+        android:pathData="M5,13h2v2H5V13z M11,13h2v2h-2V13z M17,13h2v2h-2V13z" />
+</vector>

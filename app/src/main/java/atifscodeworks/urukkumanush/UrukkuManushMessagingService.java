@@ -1,5 +1,6 @@
 package atifscodeworks.urukkumanush;
 
+import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
@@ -16,9 +17,10 @@ import androidx.core.app.NotificationCompat;
 import com.google.firebase.messaging.FirebaseMessagingService;
 import com.google.firebase.messaging.RemoteMessage;
 
-public class MrJumperMessagingService extends FirebaseMessagingService {
+public class UrukkuManushMessagingService extends FirebaseMessagingService {
     private static final String TAG = "FCMService";
     public static final String CHANNEL_ID = "mr_jumper_rivals";
+    public static final String NEW_CHANNEL_ID = "urukku_manush_rivals";
     private static final String PREFS_NAME = "urukku_manush_prefs";
     public static final String KEY_FCM_TOKEN = "fcm_device_token";
 
@@ -44,8 +46,8 @@ public class MrJumperMessagingService extends FirebaseMessagingService {
         super.onMessageReceived(remoteMessage);
         Log.i(TAG, "Push message received from: " + remoteMessage.getFrom());
 
-        String title = "High Score Smashed!";
-        String body = "Someone just beat your score! Jump back in and reclaim the top spot!";
+        String title = "Score Beaten! 😱";
+        String body = "Someone just beat your score! Jump back in and reclaim your spot!";
 
         if (remoteMessage.getNotification() != null) {
             if (remoteMessage.getNotification().getTitle() != null) {
@@ -85,10 +87,12 @@ public class MrJumperMessagingService extends FirebaseMessagingService {
                 .setSmallIcon(R.drawable.app_logo)
                 .setContentTitle(title)
                 .setContentText(body)
-                .setStyle(new NotificationCompat.BigTextStyle().bigText(body))
-                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setPriority(NotificationCompat.PRIORITY_MAX)
+                .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                 .setAutoCancel(true)
                 .setColor(Color.rgb(0, 229, 255))
+                .setVibrate(new long[]{0, 250, 150, 250})
                 .setDefaults(NotificationCompat.DEFAULT_ALL)
                 .setContentIntent(pendingIntent);
 
@@ -97,16 +101,35 @@ public class MrJumperMessagingService extends FirebaseMessagingService {
 
     public static void createNotificationChannel(NotificationManager nm) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel channel = new NotificationChannel(
+            long[] vibPattern = new long[]{0, 250, 150, 250};
+
+            // Existing channel from v2.2.0 (preserves user settings and avoids OEM silence)
+            NotificationChannel legacyChannel = new NotificationChannel(
                     CHANNEL_ID,
-                    "Leaderboard Rivalry Alerts",
+                    "Urukku Manush Rivalry Alerts",
                     NotificationManager.IMPORTANCE_HIGH
             );
-            channel.setDescription("Alerts you when a rival player beats your high score on the leaderboard");
-            channel.enableLights(true);
-            channel.setLightColor(Color.rgb(0, 229, 255));
-            channel.enableVibration(true);
-            nm.createNotificationChannel(channel);
+            legacyChannel.setDescription("Alerts you when a rival player beats your high score on the leaderboard");
+            legacyChannel.enableLights(true);
+            legacyChannel.setLightColor(Color.rgb(0, 229, 255));
+            legacyChannel.enableVibration(true);
+            legacyChannel.setVibrationPattern(vibPattern);
+            legacyChannel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
+            nm.createNotificationChannel(legacyChannel);
+
+            // New channel
+            NotificationChannel newChannel = new NotificationChannel(
+                    NEW_CHANNEL_ID,
+                    "Urukku Manush Rivalry Alerts",
+                    NotificationManager.IMPORTANCE_HIGH
+            );
+            newChannel.setDescription("Alerts you with sound and popup banners when a rival beats your score");
+            newChannel.enableLights(true);
+            newChannel.setLightColor(Color.rgb(0, 229, 255));
+            newChannel.enableVibration(true);
+            newChannel.setVibrationPattern(vibPattern);
+            newChannel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
+            nm.createNotificationChannel(newChannel);
         }
     }
 }

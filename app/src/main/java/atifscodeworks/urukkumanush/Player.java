@@ -9,6 +9,8 @@ import android.graphics.Paint;
 import android.graphics.RectF;
 import android.util.Log;
 
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.InputStream;
 
 public class Player {
@@ -69,7 +71,15 @@ public class Player {
     }
 
     public void loadHeadBitmap(String headAssetName) {
-        try (InputStream is = context.getAssets().open("imgs/" + headAssetName)) {
+        InputStream is = null;
+        try {
+            File customFile = new File(context.getFilesDir(), "custom_head.png");
+            if (customFile.exists() && customFile.length() > 0) {
+                is = new FileInputStream(customFile);
+            } else {
+                is = context.getAssets().open("imgs/" + headAssetName);
+            }
+
             if (headBitmap != null && !headBitmap.isRecycled()) {
                 headBitmap.recycle();
             }
@@ -91,6 +101,13 @@ public class Player {
             Log.e(TAG, "Error loading head bitmap: " + headAssetName, e);
             if (!"head_1.png".equals(headAssetName)) {
                 loadHeadBitmap("head_1.png");
+            }
+        } finally {
+            if (is != null) {
+                try {
+                    is.close();
+                } catch (Exception ignored) {
+                }
             }
         }
     }

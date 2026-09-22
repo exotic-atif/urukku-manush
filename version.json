@@ -1,8 +1,8 @@
 {
-  "version": "v2.2.0",
-  "name": "Urukku Manush v2.2.0",
-  "versionCode": 5,
+  "version": "v2.2.1",
+  "name": "Urukku Manush v2.2.1",
+  "versionCode": 6,
   "developer": "Atif Arman (Exotic Atif)",
   "downloadUrl": "https://github.com/exotic-atif/urukku-manush/releases/latest/download/urukku_manush.apk",
-  "changelog": "• Massive 65.7% APK size reduction (from 27.6 MB down to 9.4 MB) with optimized fonts, compressed audio, and R8 shrinking.\n• Firebase Cloud Messaging: Instant push notifications when rivals beat your high score!\n• Anti-cheat hardware-bound score vault (/data/data/) protecting high score integrity.\n• Smooth progressive speed ramp (scores 3 -> 25 -> 50) and eliminated mid-gap oscillation traps.\n• Offline play support with default character head and easy re-activation."
+  "changelog": "• Complete Retro Arcade Parchment Cabinet remodel for Game Settings, Worldwide Leaderboard, Activation Wizard, Update Center, Paused Menu, and Game Over Screen.\n• Sleek 3D arcade buttons with slim bevels, pixel borders, and touch depression feedback across all screens.\n• Native vector SVG icon set for crisp rendering at any resolution.\n• Multi-device push notification token support with comma/slash delimiter parsing.\n• Scrollable patch notes in Update Wizard with direct single-scroll navigation."
 }

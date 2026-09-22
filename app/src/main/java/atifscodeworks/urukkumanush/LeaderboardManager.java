@@ -9,10 +9,18 @@ import android.util.Log;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.io.File;
+import java.io.FileOutputStream;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+
+import javax.crypto.Cipher;
+import javax.crypto.spec.IvParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
 
 import okhttp3.MediaType;
 import okhttp3.Request;
@@ -82,26 +90,30 @@ public class LeaderboardManager {
         }
     }
 
+    public interface ProfileCallback {
+        void onProfile(String name, int score, String characterUsed, String assetUrl);
+    }
+
     public String getPlayerName(int headIndex) {
         String saved = prefs.getString(KEY_PLAYER_NAME, "");
-        if (!saved.isEmpty()) return saved;
+        if (!saved.isEmpty() && !saved.startsWith("Player")) return saved;
 
         // Lookup dynamically from cached Supabase leaderboard table
         List<Entry> cached = getCachedEntries();
         for (Entry e : cached) {
             if ((e.characterUsed != null && e.characterUsed.equals("head_" + headIndex + ".png"))
                     || e.headIndex == headIndex) {
-                if (e.name != null && !e.name.isEmpty()) {
+                if (e.name != null && !e.name.isEmpty() && !e.name.startsWith("Player")) {
                     prefs.edit().putString(KEY_PLAYER_NAME, e.name).apply();
                     return e.name;
                 }
             }
         }
-        return "Player " + headIndex;
+        return saved.isEmpty() ? "Player" : saved;
     }
 
     public void setPlayerName(String name) {
-        if (name != null && !name.trim().isEmpty()) {
+        if (name != null && !name.trim().isEmpty() && !name.startsWith("Player")) {
             prefs.edit().putString(KEY_PLAYER_NAME, name.trim()).apply();
         }
     }
@@ -138,15 +150,18 @@ public class LeaderboardManager {
         });
     }
 
-    // Multi-device sync logic on activation or refresh:
-    // local > server -> push local
-    // local < server -> pull server
     public void syncScoresWithServer(int localHighScore, String code, int headIndex, String characterUsed, SyncCallback callback) {
+        syncScoresWithServer(localHighScore, code, headIndex, characterUsed, null, callback);
+    }
+
+    // Multi-device sync logic on activation or refresh:
+    // Pulls dynamic profile from Supabase (name, score, asset_url), downloads/decrypts custom head, and resolves score
+    public void syncScoresWithServer(int localHighScore, String code, int headIndex, String characterUsed, String rawCode, SyncCallback callback) {
         executor.execute(() -> {
             int resolved = localHighScore;
             try {
                 if (code != null && !code.isEmpty()) {
-                    int serverScore = fetchServerScoreForCode(code);
+                    int serverScore = fetchServerProfileSync(code, rawCode);
                     if (serverScore > resolved) {
                         resolved = serverScore;
                         setLastSyncedScore(serverScore);
@@ -172,9 +187,60 @@ public class LeaderboardManager {
         });
     }
 
-    private int fetchServerScoreForCode(String code) {
+    public void fetchServerProfile(String codeHash, String rawCode, ProfileCallback callback) {
+        executor.execute(() -> {
+            String name = "";
+            int score = -1;
+            String charUsed = "";
+            String assetUrl = "";
+
+            try {
+                String url = SUPABASE_URL + "/rest/v1/leaderboard?code=eq." + codeHash + "&select=name,score,character_used,asset_url";
+                Request request = new Request.Builder()
+                        .url(url)
+                        .header("apikey", getAnonKey())
+                        .header("Authorization", "Bearer " + getAnonKey())
+                        .header("Accept", "application/json")
+                        .build();
+
+                try (Response response = HttpClientProvider.get().newCall(request).execute()) {
+                    if (response.isSuccessful() && response.body() != null) {
+                        String jsonStr = response.body().string();
+                        JSONArray arr = new JSONArray(jsonStr);
+                        if (arr.length() > 0) {
+                            JSONObject obj = arr.getJSONObject(0);
+                            name = obj.optString("name", "");
+                            score = obj.optInt("score", 0);
+                            charUsed = obj.optString("character_used", "");
+                            assetUrl = obj.optString("asset_url", "");
+
+                            if (!name.isEmpty() && !name.startsWith("Player")) {
+                                setPlayerName(name);
+                            }
+
+                            if (!assetUrl.isEmpty() && rawCode != null && !rawCode.isEmpty()) {
+                                downloadAndDecryptHead(assetUrl, rawCode);
+                            }
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "Error querying server profile for code: " + e.getMessage());
+            }
+
+            final String fName = name;
+            final int fScore = score;
+            final String fChar = charUsed;
+            final String fAsset = assetUrl;
+            if (callback != null) {
+                mainHandler.post(() -> callback.onProfile(fName, fScore, fChar, fAsset));
+            }
+        });
+    }
+
+    private int fetchServerProfileSync(String codeHash, String rawCode) {
         try {
-            String url = SUPABASE_URL + "/rest/v1/leaderboard?code=eq." + code + "&select=score";
+            String url = SUPABASE_URL + "/rest/v1/leaderboard?code=eq." + codeHash + "&select=name,score,character_used,asset_url";
             Request request = new Request.Builder()
                     .url(url)
                     .header("apikey", getAnonKey())
@@ -187,14 +253,66 @@ public class LeaderboardManager {
                     String jsonStr = response.body().string();
                     JSONArray arr = new JSONArray(jsonStr);
                     if (arr.length() > 0) {
-                        return arr.getJSONObject(0).optInt("score", 0);
+                        JSONObject obj = arr.getJSONObject(0);
+                        String name = obj.optString("name", "");
+                        int serverScore = obj.optInt("score", 0);
+                        String assetUrl = obj.optString("asset_url", "");
+
+                        if (!name.isEmpty() && !name.startsWith("Player")) {
+                            setPlayerName(name);
+                        }
+
+                        // Download encrypted head asset if not yet downloaded
+                        File customHead = new File(context.getFilesDir(), "custom_head.png");
+                        if (!assetUrl.isEmpty() && rawCode != null && !rawCode.isEmpty() && (!customHead.exists() || customHead.length() == 0)) {
+                            downloadAndDecryptHead(assetUrl, rawCode);
+                        }
+                        return serverScore;
                     }
                 }
             }
         } catch (Exception e) {
-            Log.w(TAG, "Error querying server score for code: " + e.getMessage());
+            Log.w(TAG, "Error syncing server profile: " + e.getMessage());
         }
         return -1;
+    }
+
+    private void downloadAndDecryptHead(String assetUrl, String rawCode) {
+        try {
+            Request request = new Request.Builder().url(assetUrl).build();
+            try (Response response = HttpClientProvider.get().newCall(request).execute()) {
+                if (response.isSuccessful() && response.body() != null) {
+                    byte[] encBytes = response.body().bytes();
+                    if (encBytes.length > 16) {
+                        MessageDigest md = MessageDigest.getInstance("SHA-256");
+                        byte[] key = md.digest(rawCode.getBytes(StandardCharsets.UTF_8));
+                        byte[] decrypted = decryptAesCbc(encBytes, key);
+                        if (decrypted != null && decrypted.length > 0) {
+                            File headFile = new File(context.getFilesDir(), "custom_head.png");
+                            try (FileOutputStream fos = new FileOutputStream(headFile)) {
+                                fos.write(decrypted);
+                            }
+                            Log.i(TAG, "Successfully downloaded and decrypted custom head asset (" + decrypted.length + " bytes)");
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Failed downloading/decrypting custom head: " + e.getMessage());
+        }
+    }
+
+    private byte[] decryptAesCbc(byte[] encData, byte[] key) throws Exception {
+        byte[] iv = new byte[16];
+        System.arraycopy(encData, 0, iv, 0, 16);
+        byte[] cipherText = new byte[encData.length - 16];
+        System.arraycopy(encData, 16, cipherText, 0, cipherText.length);
+
+        Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+        SecretKeySpec keySpec = new SecretKeySpec(key, "AES");
+        IvParameterSpec ivSpec = new IvParameterSpec(iv);
+        cipher.init(Cipher.DECRYPT_MODE, keySpec, ivSpec);
+        return cipher.doFinal(cipherText);
     }
 
     private boolean executePushScore(int score, String code, int headIndex, String characterUsed) {
@@ -202,12 +320,17 @@ public class LeaderboardManager {
             // Upsert row by unique "code" column
             String url = SUPABASE_URL + "/rest/v1/leaderboard?on_conflict=code";
             JSONObject payload = new JSONObject();
-            payload.put("name", getPlayerName(headIndex));
+            String playerName = prefs.getString(KEY_PLAYER_NAME, "");
+            if (!playerName.isEmpty() && !playerName.startsWith("Player")) {
+                payload.put("name", playerName);
+            }
             payload.put("code", code);
             payload.put("score", score);
-            payload.put("character_used", characterUsed != null ? characterUsed : "head_1.png");
+            if (characterUsed != null && !characterUsed.isEmpty()) {
+                payload.put("character_used", characterUsed);
+            }
 
-            String token = prefs.getString(MrJumperMessagingService.KEY_FCM_TOKEN, "");
+            String token = prefs.getString(UrukkuManushMessagingService.KEY_FCM_TOKEN, "");
             if (!token.isEmpty()) {
                 payload.put("fcm_token", token);
             }
@@ -313,6 +436,14 @@ public class LeaderboardManager {
                 String charUsed = obj.optString("character_used", "head_1.png");
                 String code = obj.optString("code", obj.optString("activation_hash", ""));
                 int headIndex = obj.optInt("head_index", -1);
+                if (headIndex <= 0 && charUsed != null && charUsed.startsWith("head_")) {
+                    try {
+                        String num = charUsed.replaceAll("[^0-9]", "");
+                        if (!num.isEmpty()) {
+                            headIndex = Integer.parseInt(num);
+                        }
+                    } catch (Exception ignored) {}
+                }
                 list.add(new Entry(name, score, charUsed, code, headIndex));
             }
         } catch (Exception ignored) {
