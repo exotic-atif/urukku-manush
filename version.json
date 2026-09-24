@@ -1,8 +1,8 @@
 {
-  "version": "v2.2.1",
-  "name": "Urukku Manush v2.2.1",
-  "versionCode": 6,
+  "version": "v2.2.2",
+  "name": "Urukku Manush v2.2.2",
+  "versionCode": 7,
   "developer": "Atif Arman (Exotic Atif)",
   "downloadUrl": "https://github.com/exotic-atif/urukku-manush/releases/latest/download/urukku_manush.apk",
-  "changelog": "• Complete Retro Arcade Parchment Cabinet remodel for Game Settings, Worldwide Leaderboard, Activation Wizard, Update Center, Paused Menu, and Game Over Screen.\n• Sleek 3D arcade buttons with slim bevels, pixel borders, and touch depression feedback across all screens.\n• Native vector SVG icon set for crisp rendering at any resolution.\n• Multi-device push notification token support with comma/slash delimiter parsing.\n• Scrollable patch notes in Update Wizard with direct single-scroll navigation."
+  "changelog": "• In-Game Score Meter toggle: Hide the HUD score meter while jumping for a clean view, with full score displayed on Game Over.\n• Score Meter toggle added to both Game Settings and Pause Menu with persistent memory.\n• Optical centering and spacious layout upgrade for the Pause Menu.\n• Brand new BGM tracks: bgm_1 and bgm_2 added with seamless random in-game music shuffling.\n• Push notification empty bubble fix with rich rivalry alerts."
 }

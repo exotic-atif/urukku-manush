@@ -49,19 +49,30 @@ public class UrukkuManushMessagingService extends FirebaseMessagingService {
         String title = "Score Beaten! 😱";
         String body = "Someone just beat your score! Jump back in and reclaim your spot!";
 
+        // Prefer data payload if present, or notification payload
         if (remoteMessage.getNotification() != null) {
-            if (remoteMessage.getNotification().getTitle() != null) {
-                title = remoteMessage.getNotification().getTitle();
+            String notifTitle = remoteMessage.getNotification().getTitle();
+            String notifBody = remoteMessage.getNotification().getBody();
+            if (notifTitle != null && !notifTitle.trim().isEmpty()) {
+                title = notifTitle;
             }
-            if (remoteMessage.getNotification().getBody() != null) {
-                body = remoteMessage.getNotification().getBody();
+            if (notifBody != null && !notifBody.trim().isEmpty()) {
+                body = notifBody;
             }
-        } else if (!remoteMessage.getData().isEmpty()) {
+        }
+
+        if (!remoteMessage.getData().isEmpty()) {
             if (remoteMessage.getData().containsKey("title")) {
-                title = remoteMessage.getData().get("title");
+                String dTitle = remoteMessage.getData().get("title");
+                if (dTitle != null && !dTitle.trim().isEmpty()) {
+                    title = dTitle;
+                }
             }
             if (remoteMessage.getData().containsKey("body")) {
-                body = remoteMessage.getData().get("body");
+                String dBody = remoteMessage.getData().get("body");
+                if (dBody != null && !dBody.trim().isEmpty()) {
+                    body = dBody;
+                }
             }
         }
 
@@ -87,6 +98,7 @@ public class UrukkuManushMessagingService extends FirebaseMessagingService {
                 .setSmallIcon(R.drawable.app_logo)
                 .setContentTitle(title)
                 .setContentText(body)
+                .setStyle(new NotificationCompat.BigTextStyle().bigText(body))
                 .setPriority(NotificationCompat.PRIORITY_MAX)
                 .setCategory(NotificationCompat.CATEGORY_MESSAGE)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)

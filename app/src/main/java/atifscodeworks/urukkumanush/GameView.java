@@ -86,8 +86,9 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
     private final RectF pausedCard = new RectF();
     private final RectF btnResume = new RectF();
     private final RectF btnRestart = new RectF();
+    private final RectF btnToggleScore = new RectF();
     private final RectF btnMenu = new RectF();
-    private int pressedPauseButton = 0; // 0=none, 1=resume, 2=restart, 3=menu
+    private int pressedPauseButton = 0; // 0=none, 1=resume, 2=restart, 3=toggleScore, 4=menu
 
     // Countdown state variables
     private float countdownTimer = 3.0f;
@@ -103,6 +104,7 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
     private final RectF tempRect = new RectF();
     private final RectF tempRect2 = new RectF();
     private final RectF menuLogoDestRect = new RectF();
+    private final Rect textBounds = new Rect();
     private final Path buttonClipPath = new Path();
 
     // Paints
@@ -269,21 +271,28 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
         float margin = screenHeight * 0.04f;
         btnPause.set(screenWidth - margin - pauseBtnSize, margin, screenWidth - margin, margin + pauseBtnSize);
 
-        // Paused cabinet & buttons (Parchment cabinet with 3 vertical arcade buttons)
-        float pausedCardW = screenWidth * 0.36f;
-        float pausedCardH = screenHeight * 0.78f;
+        // Paused cabinet & buttons (Parchment cabinet with 4 vertical arcade buttons)
+        float pausedCardW = screenWidth * 0.40f;
+        float pausedCardH = screenHeight * 0.82f;
         pausedCard.set((screenWidth - pausedCardW) / 2f, (screenHeight - pausedCardH) / 2f,
                 (screenWidth + pausedCardW) / 2f, (screenHeight + pausedCardH) / 2f);
 
-        float pBtnW = pausedCardW * 0.84f;
-        float pBtnH = pausedCardH * 0.18f;
-        float pSpacing = pausedCardH * 0.045f;
+        float hPadTop = pausedCardH * 0.040f;
+        float headerH = pausedCardH * 0.150f;
+        float headerBottom = pausedCard.top + hPadTop + headerH;
+
+        float pBtnW = pausedCardW * 0.86f;
+        float pBtnH = pausedCardH * 0.138f;
+        float pSpacing = pausedCardH * 0.038f;
+        float gapHeader = pausedCardH * 0.042f;
+
         float pBtnStartX = (screenWidth - pBtnW) / 2f;
-        float pFirstBtnY = pausedCard.top + (pausedCardH * 0.28f);
+        float pFirstBtnY = headerBottom + gapHeader;
 
         btnResume.set(pBtnStartX, pFirstBtnY, pBtnStartX + pBtnW, pFirstBtnY + pBtnH);
         btnRestart.set(pBtnStartX, pFirstBtnY + pBtnH + pSpacing, pBtnStartX + pBtnW, pFirstBtnY + (pBtnH * 2) + pSpacing);
-        btnMenu.set(pBtnStartX, pFirstBtnY + (pBtnH + pSpacing) * 2, pBtnStartX + pBtnW, pFirstBtnY + (pBtnH + pSpacing) * 2 + pBtnH);
+        btnToggleScore.set(pBtnStartX, pFirstBtnY + (pBtnH + pSpacing) * 2, pBtnStartX + pBtnW, pFirstBtnY + (pBtnH + pSpacing) * 2 + pBtnH);
+        btnMenu.set(pBtnStartX, pFirstBtnY + (pBtnH + pSpacing) * 3, pBtnStartX + pBtnW, pFirstBtnY + (pBtnH + pSpacing) * 3 + pBtnH);
 
         // Game Over cabinet & buttons
         float cardW = screenWidth * 0.52f;
@@ -721,33 +730,35 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
     }
 
     private void drawPlayingHUD(Canvas canvas) {
-        // Top Center: Current Score (Pixel Arcade styling)
-        float scoreSize = screenHeight * 0.12f;
-        textStrokePaint.setTypeface(pressStartFont);
-        textStrokePaint.setTextSize(scoreSize);
-        textStrokePaint.setStrokeWidth(scoreSize * 0.22f);
-        textStrokePaint.setColor(Color.rgb(23, 23, 23));
-        textPaint.setTypeface(pressStartFont);
-        textPaint.setTextSize(scoreSize);
-        textPaint.setColor(Color.WHITE);
+        if (scoreManager.isScoreMeterEnabled()) {
+            // Top Center: Current Score (Pixel Arcade styling)
+            float scoreSize = screenHeight * 0.12f;
+            textStrokePaint.setTypeface(pressStartFont);
+            textStrokePaint.setTextSize(scoreSize);
+            textStrokePaint.setStrokeWidth(scoreSize * 0.22f);
+            textStrokePaint.setColor(Color.rgb(23, 23, 23));
+            textPaint.setTypeface(pressStartFont);
+            textPaint.setTextSize(scoreSize);
+            textPaint.setColor(Color.WHITE);
 
-        float scoreY = screenHeight * 0.14f;
-        canvas.drawText(String.valueOf(currentScore), screenWidth / 2.0f, scoreY, textStrokePaint);
-        canvas.drawText(String.valueOf(currentScore), screenWidth / 2.0f, scoreY, textPaint);
+            float scoreY = screenHeight * 0.14f;
+            canvas.drawText(String.valueOf(currentScore), screenWidth / 2.0f, scoreY, textStrokePaint);
+            canvas.drawText(String.valueOf(currentScore), screenWidth / 2.0f, scoreY, textPaint);
 
-        // Top Left: High Score
-        float bestSize = screenHeight * 0.040f;
-        leftStrokePaint.setTypeface(pressStartFont);
-        leftStrokePaint.setTextSize(bestSize);
-        leftStrokePaint.setStrokeWidth(bestSize * 0.22f);
-        leftStrokePaint.setColor(Color.rgb(23, 23, 23));
-        leftAlignPaint.setTypeface(pressStartFont);
-        leftAlignPaint.setTextSize(bestSize);
-        leftAlignPaint.setColor(Color.rgb(255, 216, 77)); // Retro gold
+            // Top Left: High Score
+            float bestSize = screenHeight * 0.040f;
+            leftStrokePaint.setTypeface(pressStartFont);
+            leftStrokePaint.setTextSize(bestSize);
+            leftStrokePaint.setStrokeWidth(bestSize * 0.22f);
+            leftStrokePaint.setColor(Color.rgb(23, 23, 23));
+            leftAlignPaint.setTypeface(pressStartFont);
+            leftAlignPaint.setTextSize(bestSize);
+            leftAlignPaint.setColor(Color.rgb(255, 216, 77)); // Retro gold
 
-        String bestText = "BEST: " + Math.max(currentScore, scoreManager.getHighScore());
-        canvas.drawText(bestText, screenHeight * 0.04f, screenHeight * 0.09f, leftStrokePaint);
-        canvas.drawText(bestText, screenHeight * 0.04f, screenHeight * 0.09f, leftAlignPaint);
+            String bestText = "BEST: " + Math.max(currentScore, scoreManager.getHighScore());
+            canvas.drawText(bestText, screenHeight * 0.04f, screenHeight * 0.09f, leftStrokePaint);
+            canvas.drawText(bestText, screenHeight * 0.04f, screenHeight * 0.09f, leftAlignPaint);
+        }
 
         // Top Right: Mini Retro Arcade Pause Button
         uiPaint.setColor(Color.rgb(255, 240, 199)); // #FFF0C7 Parchment body
@@ -783,8 +794,8 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
 
         // 2. Header Box (Retro Arcade Blue #269BE8)
         float hPadX = pausedCard.width() * 0.05f;
-        float hPadTop = pausedCard.height() * 0.04f;
-        float headerH = pausedCard.height() * 0.17f;
+        float hPadTop = pausedCard.height() * 0.040f;
+        float headerH = pausedCard.height() * 0.150f;
         tempRect.set(pausedCard.left + hPadX, pausedCard.top + hPadTop,
                 pausedCard.right - hPadX, pausedCard.top + hPadTop + headerH);
 
@@ -794,26 +805,46 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
         uiStrokePaint.setStrokeWidth(3f);
         canvas.drawRoundRect(tempRect, 12f, 12f, uiStrokePaint);
 
-        float titleSize = headerH * 0.50f;
+        float titleSize = headerH * 0.46f;
         textPaint.setTypeface(pressStartFont);
         textPaint.setTextSize(titleSize);
         textStrokePaint.setTypeface(pressStartFont);
         textStrokePaint.setTextSize(titleSize);
-        textStrokePaint.setStrokeWidth(titleSize * 0.24f);
+        textStrokePaint.setStrokeWidth(titleSize * 0.22f);
         textStrokePaint.setColor(Color.rgb(23, 23, 23));
         textPaint.setColor(Color.WHITE);
 
-        float titleY = tempRect.centerY() + (titleSize * 0.35f);
-        canvas.drawText("PAUSED", tempRect.centerX(), titleY, textStrokePaint);
-        canvas.drawText("PAUSED", tempRect.centerX(), titleY, textPaint);
+        String pauseStr = "PAUSED";
+        textPaint.getTextBounds(pauseStr, 0, pauseStr.length(), textBounds);
+        textPaint.setTextAlign(Paint.Align.LEFT);
+        textStrokePaint.setTextAlign(Paint.Align.LEFT);
+
+        float drawX = tempRect.centerX() - (textBounds.width() / 2f) - textBounds.left;
+        float drawY = tempRect.centerY() - textBounds.exactCenterY();
+
+        canvas.drawText(pauseStr, drawX, drawY, textStrokePaint);
+        canvas.drawText(pauseStr, drawX, drawY, textPaint);
+
+        // Restore center alignment for arcade buttons
+        textPaint.setTextAlign(Paint.Align.CENTER);
+        textStrokePaint.setTextAlign(Paint.Align.CENTER);
 
         // 3. Action Buttons (Retro Arcade 3D Buttons with slim bevel)
         drawArcadeButton(canvas, btnResume, "RESUME", drawablePlay,
                 Color.rgb(44, 203, 99), Color.rgb(112, 229, 141), Color.rgb(22, 115, 58), 0.85f, pressedPauseButton == 1);
         drawArcadeButton(canvas, btnRestart, "RESTART", drawableRefresh,
                 Color.rgb(244, 181, 27), Color.rgb(255, 216, 77), Color.rgb(154, 106, 0), 0.82f, pressedPauseButton == 2);
+
+        boolean scoreOn = scoreManager.isScoreMeterEnabled();
+        String scoreLabel = scoreOn ? "SCORE: ON" : "SCORE: OFF";
+        int scoreBg = scoreOn ? Color.rgb(38, 155, 232) : Color.rgb(107, 114, 128);
+        int scoreTop = scoreOn ? Color.rgb(100, 198, 255) : Color.rgb(156, 163, 175);
+        int scoreDark = scoreOn ? Color.rgb(18, 90, 145) : Color.rgb(55, 65, 81);
+        drawArcadeButton(canvas, btnToggleScore, scoreLabel, drawableTrophy,
+                scoreBg, scoreTop, scoreDark, 0.80f, pressedPauseButton == 3);
+
         drawArcadeButton(canvas, btnMenu, "MAIN MENU", drawableClose,
-                Color.rgb(232, 75, 75), Color.rgb(247, 108, 108), Color.rgb(143, 41, 41), 0.78f, pressedPauseButton == 3);
+                Color.rgb(232, 75, 75), Color.rgb(247, 108, 108), Color.rgb(143, 41, 41), 0.78f, pressedPauseButton == 4);
     }
 
     private void drawCountdown(Canvas canvas) {
@@ -1034,8 +1065,12 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
                         pressedPauseButton = 2;
                         performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY);
                         return true;
-                    } else if (btnMenu.contains(tx, ty)) {
+                    } else if (btnToggleScore.contains(tx, ty)) {
                         pressedPauseButton = 3;
+                        performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY);
+                        return true;
+                    } else if (btnMenu.contains(tx, ty)) {
+                        pressedPauseButton = 4;
                         performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY);
                         return true;
                     }
@@ -1045,7 +1080,8 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
                 case MotionEvent.ACTION_MOVE:
                     if (pressedPauseButton == 1 && !btnResume.contains(tx, ty)) pressedPauseButton = 0;
                     else if (pressedPauseButton == 2 && !btnRestart.contains(tx, ty)) pressedPauseButton = 0;
-                    else if (pressedPauseButton == 3 && !btnMenu.contains(tx, ty)) pressedPauseButton = 0;
+                    else if (pressedPauseButton == 3 && !btnToggleScore.contains(tx, ty)) pressedPauseButton = 0;
+                    else if (pressedPauseButton == 4 && !btnMenu.contains(tx, ty)) pressedPauseButton = 0;
                     return true;
 
                 case MotionEvent.ACTION_UP:
@@ -1062,7 +1098,12 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback {
                         audioManager.startBgm();
                         startNewGame();
                         return true;
-                    } else if (pClicked == 3 && btnMenu.contains(tx, ty)) {
+                    } else if (pClicked == 3 && btnToggleScore.contains(tx, ty)) {
+                        boolean now = !scoreManager.isScoreMeterEnabled();
+                        scoreManager.setScoreMeterEnabled(now);
+                        audioManager.playClickSound();
+                        return true;
+                    } else if (pClicked == 4 && btnMenu.contains(tx, ty)) {
                         audioManager.playClickSound();
                         audioManager.stopBgm();
                         currentState = State.MENU;

@@ -18,20 +18,32 @@ public class ScoreManager {
     private static final String PREFS_NAME = "urukku_manush_prefs";
     private static final String KEY_HIGH_SCORE = "high_score";
     private static final String KEY_SCORE_HASH = "high_score_hash";
+    private static final String KEY_SHOW_SCORE_METER = "show_score_meter";
     private static final String VAULT_FILE_NAME = "score_vault.dat";
     private static final String SALT = "MrJumper_AntiCheat_V3_#99@Atif";
 
     private final Context context;
     private final SharedPreferences prefs;
     private int highScore;
+    private boolean scoreMeterEnabled;
 
     public ScoreManager(Context context) {
         this.context = context.getApplicationContext();
         this.prefs = this.context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
         this.highScore = loadVerifiedScore();
+        this.scoreMeterEnabled = this.prefs.getBoolean(KEY_SHOW_SCORE_METER, true);
 
         // Safely remove legacy plaintext external files to prevent PC/USB tampering
         cleanLegacyExternalFiles();
+    }
+
+    public synchronized boolean isScoreMeterEnabled() {
+        return scoreMeterEnabled;
+    }
+
+    public synchronized void setScoreMeterEnabled(boolean enabled) {
+        this.scoreMeterEnabled = enabled;
+        prefs.edit().putBoolean(KEY_SHOW_SCORE_METER, enabled).apply();
     }
 
     public synchronized int getHighScore() {

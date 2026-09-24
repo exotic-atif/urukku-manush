@@ -82,7 +82,7 @@ public class AudioManager {
             String[] intros = context.getAssets().list("audios/intro");
             if (intros != null) {
                 for (String f : intros) {
-                    if (f.endsWith(".mp3") || f.endsWith(".wav") || f.endsWith(".ogg")) {
+                    if (f.endsWith(".mp3") || f.endsWith(".wav") || f.endsWith(".ogg") || f.endsWith(".m4a")) {
                         introFiles.add("audios/intro/" + f);
                     }
                 }
@@ -91,7 +91,7 @@ public class AudioManager {
             String[] bgms = context.getAssets().list("audios/bgm");
             if (bgms != null) {
                 for (String f : bgms) {
-                    if (f.endsWith(".mp3") || f.endsWith(".wav") || f.endsWith(".ogg")) {
+                    if (f.endsWith(".mp3") || f.endsWith(".wav") || f.endsWith(".ogg") || f.endsWith(".m4a")) {
                         bgmFiles.add("audios/bgm/" + f);
                     }
                 }

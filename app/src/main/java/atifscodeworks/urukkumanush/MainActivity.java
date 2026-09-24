@@ -889,6 +889,7 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
         runOnUiThread(() -> {
             AudioManager audioMgr = gameView.getAudioManager();
             ActivationManager actMgr = gameView.getActivationManager();
+            ScoreManager scoreMgr = gameView.getScoreManager();
             Typeface pixelFont = getPressStartFont();
             float density = getResources().getDisplayMetrics().density;
 
@@ -1080,7 +1081,59 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
 
             cardsLayout.addView(audioCard);
 
-            // SECTION 2: ONLINE
+            // SECTION 2: GAMEPLAY
+            LinearLayout gameplayCard = createSettingsCard(density);
+            gameplayCard.addView(createSectionHeaderView(R.drawable.ic_trophy, "GAMEPLAY", pixelFont, density));
+
+            LinearLayout scoreMeterRow = new LinearLayout(this);
+            scoreMeterRow.setOrientation(LinearLayout.HORIZONTAL);
+            scoreMeterRow.setGravity(Gravity.CENTER_VERTICAL);
+            scoreMeterRow.setPadding(0, (int) (2 * density), 0, (int) (2 * density));
+
+            ImageView meterIcon = new ImageView(this);
+            meterIcon.setImageResource(R.drawable.ic_trophy);
+            meterIcon.setColorFilter(Color.rgb(43, 36, 27)); // #2B241B
+            int iconMeterDim = (int) (16 * density);
+            LinearLayout.LayoutParams lpMeterIc = new LinearLayout.LayoutParams(iconMeterDim, iconMeterDim);
+            lpMeterIc.setMargins(0, 0, (int) (6 * density), 0);
+            meterIcon.setLayoutParams(lpMeterIc);
+            scoreMeterRow.addView(meterIcon);
+
+            TextView meterLabel = new TextView(this);
+            meterLabel.setText("SCORE METER");
+            meterLabel.setTypeface(pixelFont);
+            meterLabel.setTextSize(10f);
+            meterLabel.setTextColor(Color.rgb(43, 36, 27));
+            meterLabel.setIncludeFontPadding(false);
+            LinearLayout.LayoutParams lpMeterLbl = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+            meterLabel.setLayoutParams(lpMeterLbl);
+            scoreMeterRow.addView(meterLabel);
+
+            boolean isMeter = scoreMgr.isScoreMeterEnabled();
+            RetroArcadeButton btnMeter = new RetroArcadeButton(this, isMeter ? "ON" : "OFF", 0,
+                    isMeter ? Color.rgb(44, 203, 99) : Color.rgb(107, 114, 128),
+                    isMeter ? Color.rgb(112, 229, 141) : Color.rgb(156, 163, 175),
+                    isMeter ? Color.rgb(22, 115, 58) : Color.rgb(55, 65, 81),
+                    pixelFont, density);
+            btnMeter.setTextSizeSp(9.5f);
+            btnMeter.setLayoutParams(new LinearLayout.LayoutParams((int) (64 * density), (int) (32 * density)));
+            btnMeter.setOnClickListener(v -> {
+                boolean now = !scoreMgr.isScoreMeterEnabled();
+                scoreMgr.setScoreMeterEnabled(now);
+                if (now) audioMgr.playClickSound();
+                btnMeter.setText(now ? "ON" : "OFF");
+                btnMeter.setColors(
+                        now ? Color.rgb(44, 203, 99) : Color.rgb(107, 114, 128),
+                        now ? Color.rgb(112, 229, 141) : Color.rgb(156, 163, 175),
+                        now ? Color.rgb(22, 115, 58) : Color.rgb(55, 65, 81)
+                );
+            });
+            scoreMeterRow.addView(btnMeter);
+            gameplayCard.addView(scoreMeterRow);
+
+            cardsLayout.addView(gameplayCard);
+
+            // SECTION 3: ONLINE
             LinearLayout onlineCard = createSettingsCard(density);
             onlineCard.addView(createSectionHeaderView(R.drawable.ic_online, "ONLINE", pixelFont, density));
 
