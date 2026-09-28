@@ -1,18 +1,59 @@
+# =========================================================
+# Android & Gradle Build Outputs & Caches
+# =========================================================
 *.iml
 .gradle/
-/local.properties
-local.properties
-.idea/
-.DS_Store
 /build/
+app/build/
 /captures
 .externalNativeBuild
 .cxx
 *.apk
-.vscode/
-ignore
-ignore/*
+*.aab
 
+# =========================================================
+# IDE & Operating System Files
+# =========================================================
+.idea/
+.vscode/
+/local.properties
+local.properties
+.DS_Store
+Thumbs.db
+ehthumbs.db
+desktop.ini
+*.log
+
+# =========================================================
+# Personal Scripts, Python & Scratch Files
+# =========================================================
+count_code.py
+__pycache__/
+*.py[cod]
+*$py.class
+scratch/
+ignore/
+
+# =========================================================
+# Sensitive Credentials & Private Keys (STRICTLY DISALLOWED)
+# =========================================================
+app/google-services.json
+*firebase-adminsdk*.json
+*serviceAccountKey*.json
+secrets/
+*.keystore
+*.jks
+*.p12
+*.pem
+*.key
+.env
+.env.*
+
+# =========================================================
+# Game Assets Privacy & Anti-Bloat Filters
+# Only placeholder .md files are tracked for folder structure.
+# Raw images, vector SVGs, audios, and binaries are excluded.
+# =========================================================
 assets/audios/*/*
 !assets/audios/*/*.md
 
@@ -22,16 +63,13 @@ assets/imgs/*
 assets/fonts/*
 !assets/fonts/*.md
 
-assets/txt/*
-!assets/txt/*.md
-
 assets/bin/*
 !assets/bin/*.md
 
-app/src/main/res/drawable/app_logo.png
-app/src/main/res/drawable/head_*_icon.png
+assets/svg/*
+!assets/svg/*.md
 
-# Firebase secrets & client configs
-app/google-services.json
-*firebase-adminsdk*.json
-*serviceAccountKey*.json
+assets/txt/*
+!assets/txt/*.md
+
+app/src/main/res/drawable/*.png

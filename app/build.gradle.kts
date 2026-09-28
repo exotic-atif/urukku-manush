@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     id("com.google.gms.google-services")
@@ -13,15 +15,33 @@ android {
         applicationId = "atifscodeworks.urukkumanush"
         minSdk = 28
         targetSdk = 37
-        versionCode = 7
-        versionName = "2.2.2"
+        versionCode = 8
+        versionName = "2.2.3"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    val localProperties = Properties().apply {
+        val localPropertiesFile = rootProject.file("local.properties")
+        if (localPropertiesFile.exists()) {
+            localPropertiesFile.inputStream().use { load(it) }
+        }
+    }
+
+    signingConfigs {
+        create("release") {
+            val storeFilePath = localProperties.getProperty("RELEASE_KEYSTORE_PATH")
+                ?: "C:/Users/Atif/Documents/apkKey/release.keystore"
+            storeFile = file(storeFilePath)
+            storePassword = localProperties.getProperty("RELEASE_KEYSTORE_PASSWORD") ?: "270508"
+            keyAlias = localProperties.getProperty("RELEASE_KEY_ALIAS") ?: "main-key"
+            keyPassword = localProperties.getProperty("RELEASE_KEY_PASSWORD") ?: "270508"
+        }
+    }
+
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
@@ -33,6 +53,10 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
+    }
+
+    androidResources {
+        ignoreAssetsPattern = "!.svn:!.git:!.ds_store:!*.scc:.*:<dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~:*.md:*.txt:*.svg"
     }
 
     sourceSets {
