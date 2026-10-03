@@ -1,8 +1,8 @@
 {
-  "version": "v2.2.2",
-  "name": "Urukku Manush v2.2.2",
-  "versionCode": 7,
+  "version": "v2.2.3",
+  "name": "Urukku Manush v2.2.3",
+  "versionCode": 8,
   "developer": "Atif Arman (Exotic Atif)",
-  "downloadUrl": "https://github.com/exotic-atif/urukku-manush/releases/latest/download/urukku_manush.apk",
-  "changelog": "• In-Game Score Meter toggle: Hide the HUD score meter while jumping for a clean view, with full score displayed on Game Over.\n• Score Meter toggle added to both Game Settings and Pause Menu with persistent memory.\n• Optical centering and spacious layout upgrade for the Pause Menu.\n• Brand new BGM tracks: bgm_1 and bgm_2 added with seamless random in-game music shuffling.\n• Push notification empty bubble fix with rich rivalry alerts."
+  "downloadUrl": "https://github.com/exotic-atif/urukku-manush/releases/download/v2.2.3/urukku_manush_ft_V2.2.3.apk",
+  "changelog": "• Firebase Cloud Messaging configuration refresh with updated services pipeline.\n• Immediate FCM device token synchronization upon activation code unlock.\n• Rivalry push notification enhancements with verified HTTP v1 delivery."
 }
