@@ -96,6 +96,29 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
         }
 
         initPushNotifications(actMgr);
+
+        // Check for updates on game launch if user has internet
+        if (gameView != null) {
+            gameView.postDelayed(this::checkForUpdatesSilentlyOnLaunch, 1200);
+        }
+    }
+
+    private void checkForUpdatesSilentlyOnLaunch() {
+        if (isFinishing() || isDestroyed() || appUpdater == null) return;
+        appUpdater.checkForUpdates(new AppUpdater.CheckCallback() {
+            @Override
+            public void onSuccess(AppUpdater.ReleaseInfo releaseInfo) {
+                if (!isFinishing() && !isDestroyed() && releaseInfo != null && releaseInfo.isUpdateAvailable) {
+                    showUpdateCenterDialog(releaseInfo);
+                }
+            }
+
+            @Override
+            public void onError(String error) {
+                // Silent fail on launch - do not disturb player if offline or error
+                Log.d(TAG, "Silent launch update check: " + error);
+            }
+        });
     }
 
     private void initPushNotifications(ActivationManager actMgr) {
@@ -831,7 +854,7 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
                 if (code.isEmpty()) return;
 
                 if (actMgr.activate(code)) {
-                    onActivationComplete(dialog, actMgr, code, onActivated, null);
+                    onActivationComplete(dialog, actMgr, code, onActivated, null, -1);
                 } else {
                     String hash = actMgr.computeSha256(code);
                     unlockBtn.setEnabled(false);
@@ -842,7 +865,7 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
                         unlockBtn.setEnabled(true);
                         if (name != null && !name.isEmpty()) {
                             actMgr.activateWithOnlineProfile(code, hash, name, charUsed);
-                            onActivationComplete(dialog, actMgr, code, onActivated, name);
+                            onActivationComplete(dialog, actMgr, code, onActivated, name, serverScore);
                         } else {
                             errorText.setText("Invalid activation code! Try again.");
                             errorText.setVisibility(View.VISIBLE);
@@ -853,7 +876,7 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
         });
     }
 
-    private void onActivationComplete(AlertDialog dialog, ActivationManager actMgr, String code, Runnable onActivated, String onlineName) {
+    private void onActivationComplete(AlertDialog dialog, ActivationManager actMgr, String code, Runnable onActivated, String onlineName, int serverScore) {
         String welcome = (onlineName != null && !onlineName.isEmpty())
                 ? "Activated! Welcome " + onlineName + "!"
                 : "Activated! Welcome to Urukku Manush!";
@@ -864,6 +887,12 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
         }
 
         ScoreManager scoreMgr = new ScoreManager(this);
+        if (serverScore >= 0) {
+            scoreMgr.setHighScore(serverScore);
+            leaderboardManager.setLastSyncedScore(serverScore);
+            leaderboardManager.markNeedsSync(false);
+        }
+
         leaderboardManager.syncScoresWithServer(
                 scoreMgr.getHighScore(),
                 actMgr.getActiveHash(),
@@ -871,9 +900,8 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
                 actMgr.getActiveHead(),
                 code,
                 syncedScore -> {
-                    if (syncedScore > scoreMgr.getHighScore()) {
+                    if (syncedScore >= 0) {
                         scoreMgr.setHighScore(syncedScore);
-                        Toast.makeText(this, "Restored high score: " + syncedScore, Toast.LENGTH_SHORT).show();
                     }
                     gameView.reloadPlayerHead();
                 }
@@ -2106,9 +2134,9 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
                             if (!meMatched) {
                                 if ((myActiveHash != null && !myActiveHash.isEmpty() && myActiveHash.equalsIgnoreCase(e.code))
                                         || (myActiveCode != null && !myActiveCode.isEmpty() && myActiveCode.equalsIgnoreCase(e.code))
-                                        || (e.headIndex > 0 && e.headIndex == myHeadIdx)
-                                        || (!activeName.isEmpty() && activeName.equalsIgnoreCase(e.name))
-                                        || (!mySavedName.isEmpty() && mySavedName.equalsIgnoreCase(e.name))) {
+                                        || (!mySavedName.isEmpty() && mySavedName.equalsIgnoreCase(e.name))
+                                        || (!activeName.isEmpty() && !activeName.equals("Player") && activeName.equalsIgnoreCase(e.name))
+                                        || (e.headIndex > 0 && e.headIndex == myHeadIdx)) {
                                     isMe = true;
                                     meMatched = true;
                                 }

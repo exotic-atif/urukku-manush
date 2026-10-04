@@ -96,7 +96,10 @@ public class LeaderboardManager {
 
     public String getPlayerName(int headIndex) {
         String saved = prefs.getString(KEY_PLAYER_NAME, "");
-        if (!saved.isEmpty() && !saved.startsWith("Player")) return saved;
+        int activeIdx = prefs.getInt("active_head_index", -1);
+        if (!saved.isEmpty() && !saved.startsWith("Player") && (headIndex <= 0 || headIndex == activeIdx)) {
+            return saved;
+        }
 
         // Lookup dynamically from cached Supabase leaderboard table
         List<Entry> cached = getCachedEntries();
@@ -104,12 +107,11 @@ public class LeaderboardManager {
             if ((e.characterUsed != null && e.characterUsed.equals("head_" + headIndex + ".png"))
                     || e.headIndex == headIndex) {
                 if (e.name != null && !e.name.isEmpty() && !e.name.startsWith("Player")) {
-                    prefs.edit().putString(KEY_PLAYER_NAME, e.name).apply();
                     return e.name;
                 }
             }
         }
-        return saved.isEmpty() ? "Player" : saved;
+        return (!saved.isEmpty() && !saved.startsWith("Player")) ? saved : "Player";
     }
 
     public void setPlayerName(String name) {
@@ -162,17 +164,25 @@ public class LeaderboardManager {
             try {
                 if (code != null && !code.isEmpty()) {
                     int serverScore = fetchServerProfileSync(code, rawCode);
-                    if (serverScore > resolved) {
-                        resolved = serverScore;
-                        setLastSyncedScore(serverScore);
+                    if (rawCode != null && !rawCode.isEmpty()) {
+                        // Fresh activation: adopt authoritative server profile score
+                        resolved = Math.max(0, serverScore);
+                        setLastSyncedScore(resolved);
                         markNeedsSync(false);
-                    } else if (resolved > serverScore || needsSync()) {
-                        boolean ok = executePushScore(resolved, code, headIndex, characterUsed);
-                        if (ok) {
-                            setLastSyncedScore(resolved);
+                    } else {
+                        // Normal gameplay / startup sync
+                        if (serverScore > resolved) {
+                            resolved = serverScore;
+                            setLastSyncedScore(serverScore);
                             markNeedsSync(false);
-                        } else {
-                            markNeedsSync(true);
+                        } else if (resolved > serverScore || needsSync()) {
+                            boolean ok = executePushScore(resolved, code, headIndex, characterUsed);
+                            if (ok) {
+                                setLastSyncedScore(resolved);
+                                markNeedsSync(false);
+                            } else {
+                                markNeedsSync(true);
+                            }
                         }
                     }
                 }
@@ -219,7 +229,7 @@ public class LeaderboardManager {
                             }
 
                             if (!assetUrl.isEmpty() && rawCode != null && !rawCode.isEmpty()) {
-                                downloadAndDecryptHead(assetUrl, rawCode);
+                                downloadAndDecryptHead(assetUrl, rawCode, charUsed);
                             }
                         }
                     }
@@ -256,6 +266,7 @@ public class LeaderboardManager {
                         JSONObject obj = arr.getJSONObject(0);
                         String name = obj.optString("name", "");
                         int serverScore = obj.optInt("score", 0);
+                        String charUsed = obj.optString("character_used", "");
                         String assetUrl = obj.optString("asset_url", "");
 
                         if (!name.isEmpty() && !name.startsWith("Player")) {
@@ -263,9 +274,11 @@ public class LeaderboardManager {
                         }
 
                         // Download encrypted head asset if not yet downloaded
-                        File customHead = new File(context.getFilesDir(), "custom_head.png");
-                        if (!assetUrl.isEmpty() && rawCode != null && !rawCode.isEmpty() && (!customHead.exists() || customHead.length() == 0)) {
-                            downloadAndDecryptHead(assetUrl, rawCode);
+                        File targetHead = (charUsed != null && !charUsed.isEmpty())
+                                ? new File(context.getFilesDir(), charUsed)
+                                : new File(context.getFilesDir(), "custom_head.png");
+                        if (!assetUrl.isEmpty() && rawCode != null && !rawCode.isEmpty() && (!targetHead.exists() || targetHead.length() == 0)) {
+                            downloadAndDecryptHead(assetUrl, rawCode, charUsed);
                         }
                         return serverScore;
                     }
@@ -277,7 +290,7 @@ public class LeaderboardManager {
         return -1;
     }
 
-    private void downloadAndDecryptHead(String assetUrl, String rawCode) {
+    private void downloadAndDecryptHead(String assetUrl, String rawCode, String characterUsed) {
         try {
             Request request = new Request.Builder().url(assetUrl).build();
             try (Response response = HttpClientProvider.get().newCall(request).execute()) {
@@ -291,6 +304,12 @@ public class LeaderboardManager {
                             File headFile = new File(context.getFilesDir(), "custom_head.png");
                             try (FileOutputStream fos = new FileOutputStream(headFile)) {
                                 fos.write(decrypted);
+                            }
+                            if (characterUsed != null && !characterUsed.isEmpty()) {
+                                File namedHeadFile = new File(context.getFilesDir(), characterUsed);
+                                try (FileOutputStream fos = new FileOutputStream(namedHeadFile)) {
+                                    fos.write(decrypted);
+                                }
                             }
                             Log.i(TAG, "Successfully downloaded and decrypted custom head asset (" + decrypted.length + " bytes)");
                         }

@@ -237,7 +237,7 @@ public class AppUpdater {
             }
 
             if (downloadUrl.isEmpty()) {
-                downloadUrl = "https://github.com/exotic-atif/urukku-manush/releases/latest/download/urukku_manush_ft_V2.2.3.apk";
+                downloadUrl = "https://github.com/exotic-atif/urukku-manush/releases/latest/download/urukku_manush_ft_V2.2.4.apk";
             }
 
             String cleanRemote = tagName.replaceAll("[^0-9.]", "");
@@ -266,7 +266,7 @@ public class AppUpdater {
             String tagName = json.optString("version", "v2.0.0");
             String releaseTitle = json.optString("name", "Urukku Manush " + tagName);
             String changelog = json.optString("changelog", "• Latest game features and optimizations.");
-            String downloadUrl = json.optString("downloadUrl", "https://github.com/exotic-atif/urukku-manush/releases/latest/download/urukku_manush_ft_V2.2.3.apk");
+            String downloadUrl = json.optString("downloadUrl", "https://github.com/exotic-atif/urukku-manush/releases/latest/download/urukku_manush_ft_V2.2.4.apk");
 
             String cleanRemote = tagName.replaceAll("[^0-9.]", "");
             String cleanCur = getCurrentVersion().replaceAll("[^0-9.]", "");
@@ -361,7 +361,7 @@ public class AppUpdater {
 
                 String currentUrl = (releaseInfo != null && releaseInfo.downloadUrl != null && !releaseInfo.downloadUrl.isEmpty())
                         ? releaseInfo.downloadUrl
-                        : "https://github.com/exotic-atif/urukku-manush/releases/latest/download/urukku_manush_ft_V2.2.3.apk";
+                        : "https://github.com/exotic-atif/urukku-manush/releases/latest/download/urukku_manush_ft_V2.2.4.apk";
 
                 String versionTag = (releaseInfo != null && releaseInfo.tagName != null) ? releaseInfo.tagName.trim() : "v_latest";
                 File updateDir = context.getExternalFilesDir("updates");

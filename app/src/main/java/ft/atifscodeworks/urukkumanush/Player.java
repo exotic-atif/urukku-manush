@@ -73,11 +73,25 @@ public class Player {
     public void loadHeadBitmap(String headAssetName) {
         InputStream is = null;
         try {
-            File customFile = new File(context.getFilesDir(), "custom_head.png");
-            if (customFile.exists() && customFile.length() > 0) {
-                is = new FileInputStream(customFile);
+            File customNamedFile = (headAssetName != null && !headAssetName.isEmpty())
+                    ? new File(context.getFilesDir(), headAssetName)
+                    : null;
+            File customDefaultFile = new File(context.getFilesDir(), "custom_head.png");
+
+            if (customNamedFile != null && customNamedFile.exists() && customNamedFile.length() > 0) {
+                is = new FileInputStream(customNamedFile);
+            } else if ("custom_head.png".equals(headAssetName) && customDefaultFile.exists() && customDefaultFile.length() > 0) {
+                is = new FileInputStream(customDefaultFile);
             } else {
-                is = context.getAssets().open("imgs/" + headAssetName);
+                try {
+                    is = context.getAssets().open("imgs/" + headAssetName);
+                } catch (Exception notInAssets) {
+                    if (customDefaultFile.exists() && customDefaultFile.length() > 0) {
+                        is = new FileInputStream(customDefaultFile);
+                    } else {
+                        throw notInAssets;
+                    }
+                }
             }
 
             if (headBitmap != null && !headBitmap.isRecycled()) {
@@ -99,8 +113,8 @@ public class Player {
             }
         } catch (Exception e) {
             Log.e(TAG, "Error loading head bitmap: " + headAssetName, e);
-            if (!"head_1.png".equals(headAssetName)) {
-                loadHeadBitmap("head_1.png");
+            if (!"head_default.png".equals(headAssetName)) {
+                loadHeadBitmap("head_default.png");
             }
         } finally {
             if (is != null) {

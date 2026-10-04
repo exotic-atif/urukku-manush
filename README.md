@@ -4,9 +4,9 @@ An arcade flappy-style Android game built with Java and native Canvas/SurfaceVie
 
 Developed by **Atif Arman (Exotic Atif)** at **Atif's Code Works**.
 
-[![Download APK](https://img.shields.io/badge/Download-Latest%20APK-brightgreen?logo=android)](https://github.com/exotic-atif/urukku-manush/releases/download/v2.2.3/urukku_manush_ft_V2.2.3.apk)
+[![Download APK](https://img.shields.io/badge/Download-Latest%20APK-brightgreen?logo=android)](https://github.com/exotic-atif/urukku-manush/releases/download/v2.2.4/urukku_manush_ft_V2.2.4.apk)
 
-📥 **Permanent Direct Download:** [Download Latest APK (urukku_manush_ft_V2.2.3.apk)](https://github.com/exotic-atif/urukku-manush/releases/download/v2.2.3/urukku_manush_ft_V2.2.3.apk)
+📥 **Permanent Direct Download:** [Download Latest APK (urukku_manush_ft_V2.2.4.apk)](https://github.com/exotic-atif/urukku-manush/releases/download/v2.2.4/urukku_manush_ft_V2.2.4.apk)
 
 ## 🎮 Key Features
 - **Dynamic Framerate**: Native VSYNC synchronization supporting 60Hz, 90Hz, 120Hz, and 144Hz+ displays with frame-rate independent delta-time physics.

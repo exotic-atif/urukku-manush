@@ -6,6 +6,7 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.util.Log;
 
+import java.io.File;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -114,7 +115,15 @@ public class ActivationManager {
                             .putString(KEY_HEAD, entry.headFile)
                             .putInt(KEY_HEAD_INDEX, entry.headIndex)
                             .putInt(KEY_PENDING_ICON_HEAD, entry.headIndex)
+                            .remove("saved_player_name")
                             .apply();
+
+                    try {
+                        File oldCustom = new File(context.getFilesDir(), "custom_head.png");
+                        if (oldCustom.exists()) {
+                            oldCustom.delete();
+                        }
+                    } catch (Exception ignored) {}
 
                     // Defer launcher icon update to app close / exit so the active game does not get terminated
                     return true;
@@ -138,13 +147,31 @@ public class ActivationManager {
     }
 
     public void activateWithOnlineProfile(String code, String hash, String name, String charUsed) {
+        int headIdx = 0;
+        if (charUsed != null && charUsed.startsWith("head_")) {
+            try {
+                String num = charUsed.replaceAll("[^0-9]", "");
+                if (!num.isEmpty()) {
+                    headIdx = Integer.parseInt(num);
+                }
+            } catch (Exception ignored) {}
+        }
+
         prefs.edit()
                 .putBoolean(KEY_ACTIVATED, true)
                 .putString(KEY_CODE, code.trim())
                 .putString("activation_hash", hash)
                 .putString(KEY_HEAD, charUsed != null && !charUsed.isEmpty() ? charUsed : "custom_head.png")
-                .putInt(KEY_HEAD_INDEX, 0)
+                .putInt(KEY_HEAD_INDEX, headIdx)
+                .putString("saved_player_name", name != null ? name.trim() : "")
                 .apply();
+
+        try {
+            File oldCustom = new File(context.getFilesDir(), "custom_head.png");
+            if (oldCustom.exists()) {
+                oldCustom.delete();
+            }
+        } catch (Exception ignored) {}
     }
 
     /**
@@ -191,7 +218,7 @@ public class ActivationManager {
             };
 
             for (int i = 0; i < aliases.length; i++) {
-                int targetState = (i + 1 == headIndex)
+                int targetState = (i + 1 == headIndex && headIndex >= 1 && headIndex <= 7)
                         ? PackageManager.COMPONENT_ENABLED_STATE_ENABLED
                         : PackageManager.COMPONENT_ENABLED_STATE_DISABLED;
                 ComponentName comp = new ComponentName(pkg, aliases[i]);
@@ -228,15 +255,15 @@ public class ActivationManager {
 
     public int getActiveHeadIndex() {
         int idx = prefs.getInt(KEY_HEAD_INDEX, -1);
-        if (idx != -1) return idx;
+        if (idx > 0) return idx;
         String head = getActiveHead();
-        if (head.contains("1")) return 1;
-        if (head.contains("2")) return 2;
-        if (head.contains("3")) return 3;
-        if (head.contains("4")) return 4;
-        if (head.contains("5")) return 5;
-        if (head.contains("6")) return 6;
-        if (head.contains("7")) return 7;
+        try {
+            String num = head.replaceAll("[^0-9]", "");
+            if (!num.isEmpty()) {
+                int parsed = Integer.parseInt(num);
+                if (parsed > 0) return parsed;
+            }
+        } catch (Exception ignored) {}
         return 1;
     }
 
