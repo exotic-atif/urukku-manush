@@ -95,14 +95,22 @@ public class ActivationManager {
         return prefs.getBoolean(KEY_ACTIVATED, false);
     }
 
+    /**
+     * Formats an activation code by removing all whitespaces (spaces, tabs, newlines, non-breaking & zero-width spaces).
+     */
+    public static String formatActivationCode(String input) {
+        if (input == null) return "";
+        return input.replaceAll("[\\s\\u00A0\\u200B\\u200C\\u200D\\uFEFF]+", "");
+    }
+
     public boolean activate(String codeInput) {
         if (codeInput == null) return false;
-        String trimmed = codeInput.trim();
-        if (trimmed.isEmpty()) return false;
+        String formatted = formatActivationCode(codeInput);
+        if (formatted.isEmpty()) return false;
 
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] inputHash = digest.digest(trimmed.getBytes(StandardCharsets.UTF_8));
+            byte[] inputHash = digest.digest(formatted.getBytes(StandardCharsets.UTF_8));
             String hex = bytesToHex(inputHash);
 
             if (hashToEntryMap.containsKey(hex)) {
@@ -110,7 +118,7 @@ public class ActivationManager {
                 if (entry != null) {
                     prefs.edit()
                             .putBoolean(KEY_ACTIVATED, true)
-                            .putString(KEY_CODE, trimmed)
+                            .putString(KEY_CODE, formatted)
                             .putString("activation_hash", hex)
                             .putString(KEY_HEAD, entry.headFile)
                             .putInt(KEY_HEAD_INDEX, entry.headIndex)
@@ -136,10 +144,11 @@ public class ActivationManager {
     }
 
     public String computeSha256(String input) {
-        if (input == null || input.trim().isEmpty()) return "";
+        String formatted = formatActivationCode(input);
+        if (formatted.isEmpty()) return "";
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(input.trim().getBytes(StandardCharsets.UTF_8));
+            byte[] hash = digest.digest(formatted.getBytes(StandardCharsets.UTF_8));
             return bytesToHex(hash);
         } catch (Exception e) {
             return "";
@@ -157,10 +166,13 @@ public class ActivationManager {
             } catch (Exception ignored) {}
         }
 
+        String formattedCode = formatActivationCode(code);
+        String formattedHash = formatActivationCode(hash);
+
         prefs.edit()
                 .putBoolean(KEY_ACTIVATED, true)
-                .putString(KEY_CODE, code.trim())
-                .putString("activation_hash", hash)
+                .putString(KEY_CODE, formattedCode)
+                .putString("activation_hash", formattedHash)
                 .putString(KEY_HEAD, charUsed != null && !charUsed.isEmpty() ? charUsed : "custom_head.png")
                 .putInt(KEY_HEAD_INDEX, headIdx)
                 .putString("saved_player_name", name != null ? name.trim() : "")
@@ -250,7 +262,7 @@ public class ActivationManager {
     }
 
     public String getActiveHead() {
-        return prefs.getString(KEY_HEAD, "head_1.png");
+        return prefs.getString(KEY_HEAD, "head_default.png");
     }
 
     public int getActiveHeadIndex() {

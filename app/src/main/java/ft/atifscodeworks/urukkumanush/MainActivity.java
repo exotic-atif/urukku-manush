@@ -37,6 +37,8 @@ import android.graphics.RectF;
 import android.graphics.drawable.LayerDrawable;
 import android.graphics.drawable.StateListDrawable;
 import android.view.MotionEvent;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
@@ -46,6 +48,12 @@ import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
 
+import com.google.android.gms.auth.api.signin.GoogleSignIn;
+import com.google.android.gms.auth.api.signin.GoogleSignInAccount;
+import com.google.android.gms.auth.api.signin.GoogleSignInClient;
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions;
+import com.google.android.gms.common.api.ApiException;
+import com.google.android.gms.tasks.Task;
 import com.google.android.material.button.MaterialButton;
 
 import java.io.File;
@@ -53,10 +61,15 @@ import java.util.List;
 
 public class MainActivity extends AppCompatActivity implements GameActionListener {
     private static final String TAG = "MainActivity";
+    public static final String GOOGLE_WEB_CLIENT_ID = "283979370419-5lp9co4bdso1jsp5seelmtlnfo92dqeb.apps.googleusercontent.com";
 
     private GameView gameView;
     private LeaderboardManager leaderboardManager;
     private AppUpdater appUpdater;
+    private GoogleSignInClient googleSignInClient;
+    private ActivityResultLauncher<Intent> googleSignInLauncher;
+    private Runnable pendingGoogleSignInSuccessCallback;
+    private AlertDialog activeActivationDialog;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -96,11 +109,98 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
         }
 
         initPushNotifications(actMgr);
+        initGoogleSignIn();
 
         // Check for updates on game launch if user has internet
         if (gameView != null) {
             gameView.postDelayed(this::checkForUpdatesSilentlyOnLaunch, 1200);
         }
+    }
+
+    private void initGoogleSignIn() {
+        try {
+            GoogleSignInOptions gso = new GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                    .requestIdToken(GOOGLE_WEB_CLIENT_ID)
+                    .requestEmail()
+                    .build();
+            googleSignInClient = GoogleSignIn.getClient(this, gso);
+        } catch (Exception e) {
+            Log.e(TAG, "Failed creating GoogleSignInClient", e);
+        }
+
+        googleSignInLauncher = registerForActivityResult(
+                new ActivityResultContracts.StartActivityForResult(),
+                result -> {
+                    if (result.getResultCode() == RESULT_OK && result.getData() != null) {
+                        handleGoogleSignInResult(result.getData());
+                    } else {
+                        Log.d(TAG, "Google Sign-In canceled or dismissed (resultCode=" + result.getResultCode() + ")");
+                    }
+                }
+        );
+    }
+
+    private void initiateGoogleSignIn(AlertDialog parentDialog, Runnable onActivated) {
+        this.activeActivationDialog = parentDialog;
+        this.pendingGoogleSignInSuccessCallback = onActivated;
+        if (googleSignInClient != null) {
+            googleSignInClient.signOut().addOnCompleteListener(task -> {
+                try {
+                    Intent signInIntent = googleSignInClient.getSignInIntent();
+                    googleSignInLauncher.launch(signInIntent);
+                } catch (Exception e) {
+                    Log.e(TAG, "Failed launching Google Sign-In intent", e);
+                    Toast.makeText(this, "Could not open Google Sign-In: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                }
+            });
+        } else {
+            Toast.makeText(this, "Google Sign-In is unavailable on this device", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void handleGoogleSignInResult(Intent data) {
+        Task<GoogleSignInAccount> task = GoogleSignIn.getSignedInAccountFromIntent(data);
+        try {
+            GoogleSignInAccount account = task.getResult(ApiException.class);
+            if (account != null) {
+                String email = account.getEmail();
+                if (email != null && !email.trim().isEmpty()) {
+                    processGoogleLoginEmail(email.trim());
+                } else {
+                    Toast.makeText(this, "Google Account did not provide an email address.", Toast.LENGTH_LONG).show();
+                }
+            }
+        } catch (ApiException e) {
+            Log.w(TAG, "Google Sign-In ApiException: code=" + e.getStatusCode() + " " + e.getMessage());
+            if (e.getStatusCode() != 12501) { // 12501: User canceled
+                Toast.makeText(this, "Google Sign-In failed (" + e.getStatusCode() + ")", Toast.LENGTH_SHORT).show();
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Unexpected error in Google Sign-In", e);
+            Toast.makeText(this, "Google Sign-In error: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void processGoogleLoginEmail(String email) {
+        Toast.makeText(this, "Verifying Google Account...", Toast.LENGTH_SHORT).show();
+        leaderboardManager.verifyGoogleAccountEmail(email, new LeaderboardManager.GoogleLoginCallback() {
+            @Override
+            public void onSuccess(String name, int score, String characterUsed, String codeHash, String assetUrl, String googleEmail) {
+                ActivationManager actMgr = (gameView != null) ? gameView.getActivationManager() : new ActivationManager(MainActivity.this);
+                actMgr.activateWithOnlineProfile(codeHash, codeHash, name, characterUsed);
+                onActivationComplete(activeActivationDialog, actMgr, codeHash, pendingGoogleSignInSuccessCallback, name, score);
+            }
+
+            @Override
+            public void onEmailNotBound(String unboundEmail) {
+                showGoogleEmailNotBoundDialog(unboundEmail);
+            }
+
+            @Override
+            public void onError(String message) {
+                Toast.makeText(MainActivity.this, "Authentication failed: " + message, Toast.LENGTH_LONG).show();
+            }
+        });
     }
 
     private void checkForUpdatesSilentlyOnLaunch() {
@@ -506,6 +606,7 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
         private final Typeface font;
         private final float density;
         private boolean isPressed = false;
+        private boolean tintIcon = true;
         private final RectF bounds = new RectF();
         private final RectF temp = new RectF();
         private final Path clipPath = new Path();
@@ -555,6 +656,11 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
 
         public void setTextSizeSp(float sp) {
             this.textSizeSp = sp;
+            invalidate();
+        }
+
+        public void setTintIcon(boolean tint) {
+            this.tintIcon = tint;
             invalidate();
         }
 
@@ -665,7 +771,11 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
                 float iconLeft = startX;
                 float iconTop = centerY - (iconSize / 2.0f);
                 icon.setBounds((int) iconLeft, (int) iconTop, (int) (iconLeft + iconSize), (int) (iconTop + iconSize));
-                icon.setTint(textColor);
+                if (tintIcon) {
+                    icon.setTint(textColor);
+                } else {
+                    icon.setTintList(null);
+                }
                 icon.draw(canvas);
             }
 
@@ -819,6 +929,44 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
             unlockBtn.setLayoutParams(lpUnlock);
             panel.addView(unlockBtn);
 
+            // Retro OR Divider
+            LinearLayout orRow = new LinearLayout(this);
+            orRow.setOrientation(LinearLayout.HORIZONTAL);
+            orRow.setGravity(Gravity.CENTER_VERTICAL);
+            int orPadV = (int) (6 * density);
+            orRow.setPadding(0, orPadV, 0, orPadV);
+
+            View line1 = new View(this);
+            line1.setBackgroundColor(Color.rgb(190, 175, 155));
+            LinearLayout.LayoutParams lpL1 = new LinearLayout.LayoutParams(0, (int) (1.5f * density), 1.0f);
+            orRow.addView(line1, lpL1);
+
+            TextView orText = new TextView(this);
+            orText.setText("OR");
+            orText.setTypeface(pixelFont);
+            orText.setTextSize(8f);
+            orText.setTextColor(Color.rgb(115, 100, 85));
+            orText.setPadding((int) (10 * density), 0, (int) (10 * density), 0);
+            orRow.addView(orText);
+
+            View line2 = new View(this);
+            line2.setBackgroundColor(Color.rgb(190, 175, 155));
+            LinearLayout.LayoutParams lpL2 = new LinearLayout.LayoutParams(0, (int) (1.5f * density), 1.0f);
+            orRow.addView(line2, lpL2);
+
+            panel.addView(orRow);
+
+            // Sign In with Google Button (Retro Arcade Google Blue)
+            RetroArcadeButton googleBtn = new RetroArcadeButton(this, "SIGN IN WITH GOOGLE", R.drawable.ic_google,
+                    Color.rgb(66, 133, 244), Color.rgb(105, 165, 252), Color.rgb(35, 88, 185),
+                    pixelFont, density);
+            googleBtn.setTintIcon(false);
+            googleBtn.setTextSizeSp(9.5f);
+            LinearLayout.LayoutParams lpGoogle = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, (int) (38 * density));
+            googleBtn.setLayoutParams(lpGoogle);
+            panel.addView(googleBtn);
+
             // Close / Cancel button (Retro red)
             RetroArcadeButton closeBtn = new RetroArcadeButton(this, "CANCEL", R.drawable.ic_close,
                     Color.rgb(232, 75, 75), Color.rgb(247, 108, 108), Color.rgb(143, 41, 41),
@@ -830,7 +978,12 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
             closeBtn.setLayoutParams(lpClose);
             panel.addView(closeBtn);
 
-            builder.setView(panel);
+            ScrollView scroll = new ScrollView(this);
+            scroll.setFillViewport(true);
+            scroll.setVerticalScrollBarEnabled(false);
+            scroll.addView(panel);
+
+            builder.setView(scroll);
 
             AlertDialog dialog = builder.create();
             dialog.show();
@@ -848,30 +1001,36 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
                 dialog.dismiss();
             });
 
+            googleBtn.setOnClickListener(v -> {
+                audioMgr.playClickSound();
+                initiateGoogleSignIn(dialog, onActivated);
+            });
+
             unlockBtn.setOnClickListener(v -> {
                 audioMgr.playClickSound();
-                String code = input.getText().toString().trim();
+                String rawInput = input.getText().toString();
+                String code = ActivationManager.formatActivationCode(rawInput);
                 if (code.isEmpty()) return;
 
-                if (actMgr.activate(code)) {
-                    onActivationComplete(dialog, actMgr, code, onActivated, null, -1);
-                } else {
-                    String hash = actMgr.computeSha256(code);
-                    unlockBtn.setEnabled(false);
-                    errorText.setText("Verifying code with server...");
-                    errorText.setVisibility(View.VISIBLE);
+                String hash = actMgr.computeSha256(code);
+                boolean localValid = actMgr.activate(code);
 
-                    leaderboardManager.fetchServerProfile(hash, code, (name, serverScore, charUsed, assetUrl) -> {
-                        unlockBtn.setEnabled(true);
-                        if (name != null && !name.isEmpty()) {
-                            actMgr.activateWithOnlineProfile(code, hash, name, charUsed);
-                            onActivationComplete(dialog, actMgr, code, onActivated, name, serverScore);
-                        } else {
-                            errorText.setText("Invalid activation code! Try again.");
-                            errorText.setVisibility(View.VISIBLE);
-                        }
-                    });
-                }
+                unlockBtn.setEnabled(false);
+                errorText.setText("Verifying code with server...");
+                errorText.setVisibility(View.VISIBLE);
+
+                leaderboardManager.fetchServerProfile(hash, code, (name, serverScore, charUsed, assetUrl) -> {
+                    unlockBtn.setEnabled(true);
+                    if (name != null && !name.isEmpty()) {
+                        actMgr.activateWithOnlineProfile(code, hash, name, charUsed);
+                        onActivationComplete(dialog, actMgr, code, onActivated, name, serverScore);
+                    } else if (localValid) {
+                        onActivationComplete(dialog, actMgr, code, onActivated, null, -1);
+                    } else {
+                        errorText.setText("Invalid activation code! Try again.");
+                        errorText.setVisibility(View.VISIBLE);
+                    }
+                });
             });
         });
     }
@@ -916,6 +1075,153 @@ public class MainActivity extends AppCompatActivity implements GameActionListene
         if (onActivated != null) {
             onActivated.run();
         }
+    }
+
+    private void showGoogleEmailNotBoundDialog(String email) {
+        runOnUiThread(() -> {
+            Typeface pixelFont = getPressStartFont();
+            float density = getResources().getDisplayMetrics().density;
+            AudioManager audioMgr = (gameView != null) ? gameView.getAudioManager() : null;
+
+            AlertDialog.Builder builder = new AlertDialog.Builder(this);
+
+            // Outer Parchment Cabinet Panel (#FFF0C7)
+            LinearLayout panel = new LinearLayout(this);
+            panel.setOrientation(LinearLayout.VERTICAL);
+            int panelPadding = (int) (12 * density);
+            panel.setPadding(panelPadding, panelPadding, panelPadding, panelPadding);
+
+            GradientDrawable panelBg = new GradientDrawable();
+            panelBg.setColor(Color.rgb(255, 240, 199)); // #FFF0C7 Cream parchment
+            panelBg.setCornerRadius(16 * density);
+            panelBg.setStroke((int) (3.5f * density), Color.rgb(23, 23, 23)); // #171717 Dark border
+            panel.setBackground(panelBg);
+
+            // Header Box (Retro Amber/Orange Warning)
+            FrameLayout headerBox = new FrameLayout(this);
+            int headerPadV = (int) (8 * density);
+            int headerPadH = (int) (12 * density);
+            headerBox.setPadding(headerPadH, headerPadV, headerPadH, headerPadV);
+
+            GradientDrawable headerBg = new GradientDrawable();
+            headerBg.setColor(Color.rgb(235, 120, 36)); // Retro Amber / Warning Orange
+            headerBg.setCornerRadius(10 * density);
+            headerBg.setStroke((int) (2.5f * density), Color.rgb(23, 23, 23));
+            headerBox.setBackground(headerBg);
+
+            int iconDim = (int) (22 * density);
+            ImageView icLeft = new ImageView(this);
+            icLeft.setImageResource(R.drawable.ic_globe);
+            icLeft.setColorFilter(Color.WHITE);
+            FrameLayout.LayoutParams lpLeft = new FrameLayout.LayoutParams(iconDim, iconDim);
+            lpLeft.gravity = Gravity.START | Gravity.CENTER_VERTICAL;
+            headerBox.addView(icLeft, lpLeft);
+
+            LinearLayout titleBox = new LinearLayout(this);
+            titleBox.setOrientation(LinearLayout.VERTICAL);
+            titleBox.setGravity(Gravity.CENTER);
+            FrameLayout.LayoutParams lpTitleBox = new FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT);
+            lpTitleBox.gravity = Gravity.CENTER;
+            titleBox.setLayoutParams(lpTitleBox);
+
+            TextView titleTv = new TextView(this);
+            titleTv.setText("ACCOUNT NOT BOUND");
+            titleTv.setTypeface(pixelFont);
+            titleTv.setTextSize(12.5f);
+            titleTv.setTextColor(Color.WHITE);
+            titleTv.setGravity(Gravity.CENTER);
+            titleTv.setShadowLayer(2f * density, 1.5f * density, 2f * density, Color.rgb(23, 23, 23));
+            titleBox.addView(titleTv);
+
+            TextView subTv = new TextView(this);
+            subTv.setText("Urukku Manush Online Services");
+            subTv.setTypeface(pixelFont);
+            subTv.setTextSize(7.5f);
+            subTv.setTextColor(Color.rgb(255, 230, 200));
+            subTv.setGravity(Gravity.CENTER);
+            subTv.setPadding(0, (int) (2 * density), 0, 0);
+            titleBox.addView(subTv);
+
+            headerBox.addView(titleBox);
+
+            panel.addView(headerBox);
+
+            // Middle Card for Notice
+            LinearLayout card = createSettingsCard(density);
+            LinearLayout.LayoutParams lpCard = (LinearLayout.LayoutParams) card.getLayoutParams();
+            lpCard.setMargins(0, (int) (8 * density), 0, (int) (8 * density));
+            card.setLayoutParams(lpCard);
+
+            card.addView(createSectionHeaderView(R.drawable.ic_globe, "GOOGLE ACCOUNT STATUS", pixelFont, density));
+
+            TextView msgTv = new TextView(this);
+            msgTv.setText("No Urukku Manush game account is bound to this Google email address:\n\n"
+                    + (email != null && !email.isEmpty() ? email : "Unknown") + "\n\n"
+                    + "Please sign in using your Activation Code, or visit the Web Portal to bind your Google Account:\n"
+                    + "https://exoticatif.likesyou.org/Urukku_Manush/login");
+            msgTv.setTypeface(pixelFont);
+            msgTv.setTextSize(8f);
+            msgTv.setTextColor(Color.rgb(75, 65, 55));
+            msgTv.setLineSpacing(0f, 1.35f);
+            msgTv.setPadding(0, 0, 0, (int) (4 * density));
+            card.addView(msgTv);
+
+            panel.addView(card);
+
+            // Web Portal Button (Retro Blue)
+            RetroArcadeButton portalBtn = new RetroArcadeButton(this, "OPEN WEB PORTAL", R.drawable.ic_globe,
+                    Color.rgb(38, 155, 232), Color.rgb(90, 185, 245), Color.rgb(20, 105, 170),
+                    pixelFont, density);
+            portalBtn.setTextSizeSp(9.5f);
+            LinearLayout.LayoutParams lpPortal = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, (int) (38 * density));
+            portalBtn.setLayoutParams(lpPortal);
+            portalBtn.setOnClickListener(v -> {
+                if (audioMgr != null) audioMgr.playClickSound();
+                try {
+                    Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse("https://exoticatif.likesyou.org/Urukku_Manush/login"));
+                    startActivity(browserIntent);
+                } catch (Exception e) {
+                    Toast.makeText(this, "Could not open browser: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                }
+            });
+            panel.addView(portalBtn);
+
+            // Log In With Code / Dismiss Button (Retro Green)
+            RetroArcadeButton codeBtn = new RetroArcadeButton(this, "LOGIN WITH CODE", R.drawable.ic_key,
+                    Color.rgb(44, 203, 99), Color.rgb(112, 229, 141), Color.rgb(22, 115, 58),
+                    pixelFont, density);
+            codeBtn.setTextSizeSp(9.5f);
+            LinearLayout.LayoutParams lpCode = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, (int) (36 * density));
+            lpCode.setMargins(0, (int) (6 * density), 0, 0);
+            codeBtn.setLayoutParams(lpCode);
+            panel.addView(codeBtn);
+
+            ScrollView scroll = new ScrollView(this);
+            scroll.setFillViewport(true);
+            scroll.setVerticalScrollBarEnabled(false);
+            scroll.addView(panel);
+
+            builder.setView(scroll);
+            AlertDialog unboundDialog = builder.create();
+
+            codeBtn.setOnClickListener(v -> {
+                if (audioMgr != null) audioMgr.playClickSound();
+                unboundDialog.dismiss();
+            });
+
+            unboundDialog.show();
+
+            if (unboundDialog.getWindow() != null) {
+                unboundDialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
+                int screenWidth = getResources().getDisplayMetrics().widthPixels;
+                int maxDialogWidth = (int) (430 * density);
+                int dialogWidth = Math.min(maxDialogWidth, (int) (screenWidth * 0.88f));
+                unboundDialog.getWindow().setLayout(dialogWidth, WindowManager.LayoutParams.WRAP_CONTENT);
+            }
+        });
     }
 
     @Override

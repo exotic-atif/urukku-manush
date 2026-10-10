@@ -15,8 +15,8 @@ android {
         applicationId = "ft.atifscodeworks.urukkumanush"
         minSdk = 28
         targetSdk = 37
-        versionCode = 9
-        versionName = "2.2.4"
+        versionCode = 10
+        versionName = "2.2.5"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -59,7 +59,7 @@ android {
     }
 
     androidResources {
-        ignoreAssetsPattern = "!.svn:!.git:!.ds_store:!*.scc:.*:<dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~:*.md:*.txt:*.svg"
+        ignoreAssetsPattern = "!.svn:!.git:!.ds_store:!*.scc:.*:<dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~:*.md:*.txt:*.svg:head_1.png:head_2.png:head_3.png:head_4.png:head_5.png:head_6.png:head_7.png:head_8.png:head_9.png:head_10.png:head_11.png:head_12.png"
     }
 
     sourceSets {
@@ -76,6 +76,7 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation(platform("com.google.firebase:firebase-bom:33.9.0"))
     implementation("com.google.firebase:firebase-messaging")
+    implementation("com.google.android.gms:play-services-auth:21.3.0")
     testImplementation(libs.junit)
     androidTestImplementation(libs.espresso.core)
     androidTestImplementation(libs.ext.junit)

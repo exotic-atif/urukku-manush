@@ -14,3 +14,7 @@
 # Third-party libraries
 -dontwarn okhttp3.**
 -dontwarn okio.**
+
+# Google Sign-In
+-keep class com.google.android.gms.auth.api.signin.** { *; }
+-dontwarn com.google.android.gms.**

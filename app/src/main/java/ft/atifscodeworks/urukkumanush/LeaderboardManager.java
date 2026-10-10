@@ -11,6 +11,7 @@ import org.json.JSONObject;
 
 import java.io.File;
 import java.io.FileOutputStream;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.ArrayList;
@@ -94,6 +95,12 @@ public class LeaderboardManager {
         void onProfile(String name, int score, String characterUsed, String assetUrl);
     }
 
+    public interface GoogleLoginCallback {
+        void onSuccess(String name, int score, String characterUsed, String codeHash, String assetUrl, String googleEmail);
+        void onEmailNotBound(String email);
+        void onError(String message);
+    }
+
     public String getPlayerName(int headIndex) {
         String saved = prefs.getString(KEY_PLAYER_NAME, "");
         int activeIdx = prefs.getInt("active_head_index", -1);
@@ -159,12 +166,14 @@ public class LeaderboardManager {
     // Multi-device sync logic on activation or refresh:
     // Pulls dynamic profile from Supabase (name, score, asset_url), downloads/decrypts custom head, and resolves score
     public void syncScoresWithServer(int localHighScore, String code, int headIndex, String characterUsed, String rawCode, SyncCallback callback) {
+        final String cleanCode = ActivationManager.formatActivationCode(code);
+        final String cleanRawCode = ActivationManager.formatActivationCode(rawCode);
         executor.execute(() -> {
             int resolved = localHighScore;
             try {
-                if (code != null && !code.isEmpty()) {
-                    int serverScore = fetchServerProfileSync(code, rawCode);
-                    if (rawCode != null && !rawCode.isEmpty()) {
+                if (cleanCode != null && !cleanCode.isEmpty()) {
+                    int serverScore = fetchServerProfileSync(cleanCode, cleanRawCode);
+                    if (cleanRawCode != null && !cleanRawCode.isEmpty()) {
                         // Fresh activation: adopt authoritative server profile score
                         resolved = Math.max(0, serverScore);
                         setLastSyncedScore(resolved);
@@ -176,7 +185,7 @@ public class LeaderboardManager {
                             setLastSyncedScore(serverScore);
                             markNeedsSync(false);
                         } else if (resolved > serverScore || needsSync()) {
-                            boolean ok = executePushScore(resolved, code, headIndex, characterUsed);
+                            boolean ok = executePushScore(resolved, cleanCode, headIndex, characterUsed);
                             if (ok) {
                                 setLastSyncedScore(resolved);
                                 markNeedsSync(false);
@@ -198,6 +207,8 @@ public class LeaderboardManager {
     }
 
     public void fetchServerProfile(String codeHash, String rawCode, ProfileCallback callback) {
+        final String cleanHash = ActivationManager.formatActivationCode(codeHash);
+        final String cleanRaw = ActivationManager.formatActivationCode(rawCode);
         executor.execute(() -> {
             String name = "";
             int score = -1;
@@ -205,7 +216,7 @@ public class LeaderboardManager {
             String assetUrl = "";
 
             try {
-                String url = SUPABASE_URL + "/rest/v1/leaderboard?code=eq." + codeHash + "&select=name,score,character_used,asset_url";
+                String url = SUPABASE_URL + "/rest/v1/leaderboard?code=eq." + cleanHash + "&select=name,score,character_used,asset_url";
                 Request request = new Request.Builder()
                         .url(url)
                         .header("apikey", getAnonKey())
@@ -228,8 +239,8 @@ public class LeaderboardManager {
                                 setPlayerName(name);
                             }
 
-                            if (!assetUrl.isEmpty() && rawCode != null && !rawCode.isEmpty()) {
-                                downloadAndDecryptHead(assetUrl, rawCode, charUsed);
+                            if (!assetUrl.isEmpty() && cleanRaw != null && !cleanRaw.isEmpty()) {
+                                downloadAndDecryptHead(assetUrl, cleanRaw, charUsed);
                             }
                         }
                     }
@@ -249,8 +260,10 @@ public class LeaderboardManager {
     }
 
     private int fetchServerProfileSync(String codeHash, String rawCode) {
+        String cleanHash = ActivationManager.formatActivationCode(codeHash);
+        String cleanRaw = ActivationManager.formatActivationCode(rawCode);
         try {
-            String url = SUPABASE_URL + "/rest/v1/leaderboard?code=eq." + codeHash + "&select=name,score,character_used,asset_url";
+            String url = SUPABASE_URL + "/rest/v1/leaderboard?code=eq." + cleanHash + "&select=name,score,character_used,asset_url";
             Request request = new Request.Builder()
                     .url(url)
                     .header("apikey", getAnonKey())
@@ -277,8 +290,9 @@ public class LeaderboardManager {
                         File targetHead = (charUsed != null && !charUsed.isEmpty())
                                 ? new File(context.getFilesDir(), charUsed)
                                 : new File(context.getFilesDir(), "custom_head.png");
-                        if (!assetUrl.isEmpty() && rawCode != null && !rawCode.isEmpty() && (!targetHead.exists() || targetHead.length() == 0)) {
-                            downloadAndDecryptHead(assetUrl, rawCode, charUsed);
+                        if (!assetUrl.isEmpty() && (!targetHead.exists() || targetHead.length() == 0)) {
+                            String codeToUse = (cleanRaw != null && !cleanRaw.isEmpty()) ? cleanRaw : cleanHash;
+                            downloadAndDecryptHead(assetUrl, codeToUse, charUsed);
                         }
                         return serverScore;
                     }
@@ -290,15 +304,21 @@ public class LeaderboardManager {
         return -1;
     }
 
-    private void downloadAndDecryptHead(String assetUrl, String rawCode, String characterUsed) {
+    public void downloadAndDecryptHead(String assetUrl, String rawCode, String characterUsed) {
+        String cleanCode = ActivationManager.formatActivationCode(rawCode);
         try {
             Request request = new Request.Builder().url(assetUrl).build();
             try (Response response = HttpClientProvider.get().newCall(request).execute()) {
                 if (response.isSuccessful() && response.body() != null) {
                     byte[] encBytes = response.body().bytes();
                     if (encBytes.length > 16) {
-                        MessageDigest md = MessageDigest.getInstance("SHA-256");
-                        byte[] key = md.digest(rawCode.getBytes(StandardCharsets.UTF_8));
+                        byte[] key;
+                        if (cleanCode != null && cleanCode.length() == 64 && isHex(cleanCode)) {
+                            key = hexToBytes(cleanCode);
+                        } else {
+                            MessageDigest md = MessageDigest.getInstance("SHA-256");
+                            key = md.digest(cleanCode.getBytes(StandardCharsets.UTF_8));
+                        }
                         byte[] decrypted = decryptAesCbc(encBytes, key);
                         if (decrypted != null && decrypted.length > 0) {
                             File headFile = new File(context.getFilesDir(), "custom_head.png");
@@ -319,6 +339,93 @@ public class LeaderboardManager {
         } catch (Exception e) {
             Log.w(TAG, "Failed downloading/decrypting custom head: " + e.getMessage());
         }
+    }
+
+    private static boolean isHex(String s) {
+        if (s == null || s.length() != 64) return false;
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static byte[] hexToBytes(String hex) {
+        int len = hex.length();
+        byte[] data = new byte[len / 2];
+        for (int i = 0; i < len; i += 2) {
+            data[i / 2] = (byte) ((Character.digit(hex.charAt(i), 16) << 4)
+                    + Character.digit(hex.charAt(i + 1), 16));
+        }
+        return data;
+    }
+
+    public void verifyGoogleAccountEmail(String email, GoogleLoginCallback callback) {
+        executor.execute(() -> {
+            try {
+                if (email == null || email.trim().isEmpty()) {
+                    if (callback != null) {
+                        mainHandler.post(() -> callback.onError("Invalid Google email address."));
+                    }
+                    return;
+                }
+
+                String trimmedEmail = email.trim();
+                String encodedEmail = URLEncoder.encode(trimmedEmail, "UTF-8");
+                String url = SUPABASE_URL + "/rest/v1/leaderboard?g_email=ilike." + encodedEmail + "&select=id,name,score,character_used,asset_url,code,g_email";
+
+                Request request = new Request.Builder()
+                        .url(url)
+                        .header("apikey", getAnonKey())
+                        .header("Authorization", "Bearer " + getAnonKey())
+                        .header("Accept", "application/json")
+                        .build();
+
+                try (Response response = HttpClientProvider.get().newCall(request).execute()) {
+                    if (response.isSuccessful() && response.body() != null) {
+                        String jsonStr = response.body().string();
+                        JSONArray arr = new JSONArray(jsonStr);
+                        if (arr.length() > 0) {
+                            JSONObject obj = arr.getJSONObject(0);
+                            String name = obj.optString("name", "");
+                            int score = obj.optInt("score", 0);
+                            String charUsed = obj.optString("character_used", "");
+                            String assetUrl = obj.optString("asset_url", "");
+                            String codeHash = obj.optString("code", "");
+                            String boundEmail = obj.optString("g_email", trimmedEmail);
+
+                            if (!name.isEmpty() && !name.startsWith("Player")) {
+                                setPlayerName(name);
+                            }
+
+                            if (!assetUrl.isEmpty() && !codeHash.isEmpty()) {
+                                downloadAndDecryptHead(assetUrl, codeHash, charUsed);
+                            }
+
+                            if (callback != null) {
+                                mainHandler.post(() -> callback.onSuccess(name, score, charUsed, codeHash, assetUrl, boundEmail));
+                            }
+                        } else {
+                            if (callback != null) {
+                                mainHandler.post(() -> callback.onEmailNotBound(trimmedEmail));
+                            }
+                        }
+                    } else {
+                        String err = "Server responded with status " + response.code();
+                        if (callback != null) {
+                            mainHandler.post(() -> callback.onError(err));
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Error checking Google account in leaderboard", e);
+                if (callback != null) {
+                    mainHandler.post(() -> callback.onError(e.getMessage() != null ? e.getMessage() : "Network error"));
+                }
+            }
+        });
     }
 
     private byte[] decryptAesCbc(byte[] encData, byte[] key) throws Exception {
